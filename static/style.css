@@ -1,0 +1,390 @@
+body {
+    margin: 0;
+    font-family: Segoe UI;
+}
+
+.login-container {
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #f5f5f5;
+}
+
+.sidebar {
+    width: 240px;
+    height: 100vh;
+    background: #1f2937;
+    color: white;
+    padding: 20px;
+    position: fixed;
+}
+
+.content {
+    margin-left: 240px;
+    padding: 20px;
+}
+
+.user-panel {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 10px;
+    border-radius: 8px;
+    margin-bottom: 15px;
+}
+
+.user-panel div {
+    margin: 6px 0;
+    font-size: 14px;
+}
+
+.sidebar button {
+    width: 100%;
+}
+
+
+.header-bar {
+    margin-bottom: 20px;
+}
+
+.folder-card {
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    margin-bottom: 10px;
+    overflow: hidden;
+}
+
+.folder-title {
+    background: #f3f4f6;
+    padding: 12px;
+    cursor: pointer;
+    font-weight: bold;
+    user-select: none;
+}
+
+.folder-title:hover {
+    background: #e5e7eb;
+}
+
+.folder-content {
+    padding-left: 30px;
+    border-left: 2px solid #d1d5db;
+}
+
+.file-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+}
+
+.file-name {
+    flex: 1;
+}
+
+.file-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-action {
+    background: #2563eb;
+    color: white;
+    border: none;
+    padding: 4px 10px;
+    border-radius: 6px;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.btn-action:hover {
+    opacity: 0.8;
+}
+
+.danger {
+    background: #dc2626;
+}
+
+.dark {
+    background: #111827;
+    color: white;
+}
+
+.dark .file-card {
+    background: #1f2937;
+    color: white;
+}
+
+
+/* 上传区域 */
+.toolbar-card {
+    background: white;
+    padding: 16px;
+    border-radius: 12px;
+    box-shadow:
+        0 2px 8px rgba(0,0,0,0.08);
+    margin-bottom: 20px;
+
+}
+
+/* 每一行 */
+.toolbar-row {
+    display: grid;
+    grid-template-columns: 1fr 100px;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+/* 最后一行不要间距 */
+.toolbar-row:last-child {
+    margin-bottom: 0;
+}
+
+/* 标签 */
+
+.folder-label {
+    width: 80px;
+    font-weight: 600;
+}
+
+
+/* ===================== */
+/* 用户管理页面 - 浅色模式 */
+/* ===================== */
+
+/* #userManagerPage {
+    background: #f8fafc;
+    padding: 15px;
+    border-radius: 12px;
+    margin-top: 15px;
+} */
+
+/* 新增用户区域 */
+#userManagerPage .card {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    box-shadow:
+        0 2px 8px rgba(0, 0, 0, 0.08);
+    border-radius: 6px;
+}
+
+/* 表格 */
+#userManagerPage table {
+    background: white;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+/* 表头 */
+#userManagerPage thead {
+    background: #2563eb;
+    color: white;
+}
+
+/* 表格行 */
+#userManagerPage tbody tr:hover {
+    background: #f3f4f6;
+}
+
+/* 输入框 */
+#userManagerPage input {
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+}
+
+/* 下拉框 */
+#userManagerPage select {
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+}
+
+/* 标题 */
+#userManagerPage h3 {
+    margin-bottom: 20px;
+    color: #d1e4ff;
+    font-weight: 600;
+}
+
+/* 新增用户按钮 */
+#userManagerPage .btn-success {
+    background: #16a34a;
+    border: none;
+}
+
+#userManagerPage .btn-success:hover {
+    background: #15803d;
+}
+
+/* ===================== */
+/* Dark Mode */
+/* ===================== */
+
+body.dark {
+    background: #0f172a;
+    color: #f8fafc;
+}
+
+/* 侧边栏 */
+body.dark .sidebar {
+    background: #080c13;
+    color: #f8fafc;
+}
+
+/* 主内容区 */
+body.dark .content {
+    background: #0f172a;
+}
+
+/* 文件卡片 */
+body.dark .file-card {
+    background: #1e293b;
+    color: #f8fafc;
+    border: 1px solid #334155;
+}
+
+/* 文件夹 */
+body.dark .folder-card {
+    background: #1e293b;
+    border: 1px solid #334155;
+}
+
+body.dark .folder-title {
+    background: #334155;
+    color: #f8fafc;
+}
+
+body.dark .folder-title:hover {
+    background: #475569;
+}
+
+/* 文件 */
+body.dark .file-item {
+    color: #cbd5e1;
+}
+
+/* 用户面板 */
+body.dark .user-panel {
+    background: #1e293b;
+    border: 1px solid #334155;
+}
+
+/* 输入框 */
+body.dark input {
+    background: #1e293b;
+    color: #f8fafc;
+    border: 1px solid #475569;
+}
+
+/* 下拉框 */
+body.dark select {
+    background: #1e293b;
+    color: #f8fafc;
+    border: 1px solid #475569;
+}
+
+/* textarea */
+body.dark textarea {
+    background: #1e293b;
+    color: #f8fafc;
+    border: 1px solid #475569;
+}
+
+/* 表格 */
+body.dark table {
+    color: #f8fafc;
+}
+
+body.dark th {
+    background: #1e293b;
+}
+
+body.dark td {
+    background: #0f172a;
+}
+
+/* Bootstrap Card */
+body.dark .card {
+    background: #1e293b;
+    color: #f8fafc;
+    border-color: #334155;
+}
+
+/* Bootstrap Modal */
+body.dark .modal-content {
+    background: #1e293b;
+    color: #f8fafc;
+}
+
+/* 用户管理 */
+body.dark #userManagerPage {
+    background: #080c13;
+    color: #f8fafc;
+}
+
+/* 用户管理页面 */
+body.dark #userManagerPage {
+    background: #0f172a;
+    color: #f8fafc;
+}
+
+/* 新增用户卡片 */
+body.dark #userManagerPage .card {
+    background: #1e293b;
+    color: #f8fafc;
+    border: 1px solid #334155;
+}
+
+/* 表格 */
+body.dark #userManagerPage table {
+    color: #f8fafc;
+}
+
+body.dark #userManagerPage thead {
+    background: #1e293b;
+}
+
+body.dark #userManagerPage th {
+    background: #1e293b;
+    color: #f8fafc;
+    border-color: #334155;
+}
+
+body.dark #userManagerPage td {
+    background: #0f172a;
+    color: #f8fafc;
+    border-color: #334155;
+}
+
+/* 输入框 */
+body.dark #userManagerPage input {
+    background: #1e293b;
+    color: #f8fafc;
+    border: 1px solid #475569;
+}
+
+/* 下拉框 */
+body.dark #userManagerPage select {
+    background: #1e293b;
+    color: #f8fafc;
+    border: 1px solid #475569;
+}
+
+/* placeholder */
+body.dark input::placeholder {
+    color: #94a3b8;
+}
+
+/* 搜索框 */
+body.dark #search {
+    background: #1e293b;
+    color: #f8fafc;
+}
+
+/* 文件上传区域 */
+body.dark .toolbar-card {
+    background: #1e293b;
+    border: 1px solid #334155;
+}
+
+body.dark .folder-label {
+    color: #f8fafc;
+}
