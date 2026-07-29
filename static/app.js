@@ -1,3 +1,5 @@
+let currentShareFile = "";
+
 document.addEventListener("DOMContentLoaded", function () {
     const loginBtn = document.getElementById("loginBtn");
     const uploadBtn = document.getElementById("uploadBtn");
@@ -73,16 +75,10 @@ async function login() {
 }
 
 function initPermission() {
-    const role =
-        localStorage.getItem("role");
-    const uploadArea =
-        document.getElementById(
-            "uploadArea"
-        );
-    const userManageBtn =
-        document.getElementById(
-            "userManageBtn"
-        );
+    const role = localStorage.getItem("role");
+    const uploadArea = document.getElementById("uploadArea");
+    const userManageBtn = document.getElementById("userManageBtn");
+    const shareManageBtn = document.getElementById("shareManageBtn");
 
     if (role === "viewer") {
 
@@ -97,6 +93,11 @@ function initPermission() {
 
         if (userManageBtn) {
             userManageBtn.style.display =
+                "none";
+        }
+
+        if (shareManageBtn) {
+            shareManageBtn.style.display =
                 "none";
         }
 
@@ -295,7 +296,7 @@ async function loadFiles() {
         // }
 
         // 普通文件夹
-        const folderDiv =document.createElement("div");
+        const folderDiv = document.createElement("div");
         const folderId = folder.replaceAll("/", "_").replaceAll("\\", "_");
 
         folderDiv.className =
@@ -337,6 +338,15 @@ async function loadFiles() {
                         下载
                     </a>
 
+                    ${localStorage.getItem("role") != "viewer" ?
+                    `
+                    <button
+                        onclick="shareFile('${file.path}')"
+                        class="btn-action">
+                        共享
+                    </button>
+                    `: ""}
+
                     ${localStorage.getItem("role") === "admin" ?
                     `
                         <button
@@ -346,8 +356,7 @@ async function loadFiles() {
                         </button>
                         `
                     :
-                    ""
-                }
+                    ""}
                 </span>
             </div>
         `;
@@ -509,6 +518,301 @@ async function createFolder() {
         alert("创建失败");
 
     }
+}
+
+function shareFile(path) {
+    currentShareFile = path;
+    const modal =
+        new bootstrap.Modal(document.getElementById("shareModal"));
+    modal.show();
+}
+
+document.addEventListener(
+    "DOMContentLoaded",
+    () => {
+
+        const shareBtn =
+            document.getElementById(
+                "createShareBtn"
+            );
+
+        if (shareBtn) {
+
+            shareBtn.addEventListener(
+                "click",
+                createShareLink
+            );
+
+        }
+
+    }
+);
+
+async function createShareLink() {
+
+    const days = document.getElementById("shareDays").value;
+    const password = document.getElementById("sharePassword").value
+    const fd = new FormData();
+
+    fd.append("filepath", currentShareFile);
+    fd.append("days", days);
+    fd.append("password", password);
+
+    const response =
+        await fetch(
+            "./api/share",
+            {
+                method: "POST",
+                body: fd
+            }
+        );
+
+    const result =
+        await response.json();
+
+    if (result.success) {
+
+        const shareUrl =
+
+            window.location.origin +
+
+            "/share/" +
+
+            result.share_id;
+
+        navigator.clipboard.writeText(
+            shareUrl
+        );
+
+        alert(
+            "共享链接已复制\n\n" +
+            shareUrl +
+            "\n\n有效期至：\n" +
+            result.expire +
+            "\n\n密码：" +
+            password
+        );
+
+
+        bootstrap.Modal
+            .getInstance(
+                document.getElementById(
+                    "shareModal"
+                )
+            )
+            .hide();
+
+    }
+}
+
+let currentView = "file";
+
+function toggleShareView() {
+
+    const filePage =
+        document.getElementById(
+            "filePage"
+        );
+
+    const sharePage =
+        document.getElementById(
+            "shareManagerPage"
+        );
+
+    const btn =
+        document.getElementById(
+            "viewSwitchBtn"
+        );
+
+    if (currentView === "file") {
+
+        filePage.style.display =
+            "none";
+
+        sharePage.style.display =
+            "block";
+
+        btn.innerHTML =
+            "📁 返回文件";
+
+        currentView =
+            "share";
+
+        loadShares();
+
+    } else {
+
+        sharePage.style.display =
+            "none";
+
+        filePage.style.display =
+            "block";
+
+        btn.innerHTML =
+            "🔗 共享管理";
+
+        currentView =
+            "file";
+
+    }
+
+}
+
+async function loadShares() {
+
+    const response =
+        await fetch("./api/shares");
+
+    const shares =
+        await response.json();
+
+    document.getElementById(
+        "shareCount"
+    ).innerText =
+
+        Object.keys(shares).length +
+        " 个共享";
+
+    const list =
+        document.getElementById(
+            "shareList"
+        );
+
+    list.innerHTML = "";
+
+    Object.keys(shares).forEach(id => {
+
+        const share =
+            shares[id];
+
+        const expired =
+
+            new Date(
+                share.expire
+            ) < new Date();
+
+        list.innerHTML += `
+
+        <div class="share-card">
+
+            <div class="share-card-top">
+
+                <div class="share-id">
+
+                    ID: ${id}
+
+                </div>
+
+                <div class="
+                    share-status
+                    ${expired
+                ? "share-expired"
+                : "share-active"
+            }
+                ">
+
+                    ${expired
+                ? "已过期"
+                : "有效"
+            }
+
+                </div>
+
+            </div>
+
+            <div class="share-path">
+
+                📄 ${share.path}
+
+            </div>
+
+            <div class="share-meta">
+
+                ⏰ 到期时间：
+                ${share.expire}
+
+            </div>
+
+            <div class="share-meta">
+
+                🔒 ${share.password
+                ? "已设置密码"
+                : "无需密码"
+            }
+
+            </div>
+
+            <div class="share-actions">
+
+                <button
+                    class="btn btn-primary btn-sm"
+                    onclick="copyShare('${id}')">
+
+                    复制链接
+
+                </button>
+
+                <button
+                    class="btn btn-danger btn-sm"
+                    onclick="deleteShare('${id}')">
+
+                    取消共享
+
+                </button>
+
+            </div>
+
+        </div>
+
+        `;
+
+    });
+
+}
+
+function copyShare(id) {
+
+    const url =
+
+        window.location.origin +
+
+        "/share/" +
+
+        id;
+
+    navigator.clipboard
+        .writeText(url);
+
+    alert("已复制");
+
+}
+
+async function deleteShare(id) {
+
+    if (
+        !confirm("删除共享？")
+    ) {
+        return;
+    }
+
+    const fd =
+        new FormData();
+
+    fd.append(
+        "share_id",
+        id
+    );
+
+    await fetch(
+        "./api/delete-share",
+        {
+            method: "POST",
+            body: fd
+        }
+    );
+
+    loadShares();
+
 }
 
 

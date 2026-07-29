@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+    <meta charset="utf-8">
+
+    <title>共享文件</title>
+
+</head>
+
+<body>
+
+    <h2>共享文件访问</h2>
+
+    <input type="password" id="sharePassword" placeholder="请输入提取密码">
+
+    <button onclick="verifyShare()">
+
+        访问文件
+
+    </button>
+
+    <script>
+
+        async function verifyShare() {
+
+            const shareId =
+                window.location.pathname
+                    .split("/")
+                    .pop();
+
+            const fd =
+                new FormData();
+
+            fd.append(
+                "share_id",
+                shareId
+            );
+
+            fd.append(
+                "password",
+                document
+                    .getElementById(
+                        "sharePassword"
+                    ).value
+            );
+
+            const response =
+                await fetch(
+                    "/api/share-check",
+                    {
+                        method: "POST",
+                        body: fd
+                    }
+                );
+
+            const result =
+                await response.json();
+
+            if (result.success) {
+
+                window.location =
+                    "/api/share-download/" +
+                    shareId;
+
+            }
+            else {
+
+                alert(
+                    result.message
+                );
+
+            }
+        }
+
+    </script>
+
+</body>
+
+</html>

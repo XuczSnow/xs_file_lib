@@ -18,6 +18,7 @@ body {
     color: white;
     padding: 20px;
     position: fixed;
+    overflow-y:auto;
 }
 
 .content {
@@ -27,6 +28,7 @@ body {
 
 .user-panel {
     background: rgba(255, 255, 255, 0.1);
+    border: 1px solid #334155;
     padding: 10px;
     border-radius: 8px;
     margin-bottom: 15px;
@@ -40,7 +42,6 @@ body {
 .sidebar button {
     width: 100%;
 }
-
 
 .header-bar {
     margin-bottom: 20px;
@@ -146,6 +147,87 @@ body {
     font-weight: 600;
 }
 
+
+/* ===================== */
+/* Share Manager */
+/* ===================== */
+
+.share-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.share-count {
+    background: #e5e7eb;
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 13px;
+}
+
+/* 共享卡片 */
+.share-card {
+    background: white;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+    border: 1px solid #e5e7eb;
+    box-shadow:
+        0 2px 8px rgba(0,0,0,0.06);
+}
+
+/* 顶部 */
+.share-card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.share-id {
+    font-size: 13px;
+    color: #64748b;
+}
+
+.share-status {
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.share-active {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.share-expired {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+/* 文件路径 */
+.share-path {
+    font-size: 15px;
+    font-weight: 500;
+    margin-bottom: 10px;
+    word-break: break-all;
+}
+
+/* 信息 */
+.share-meta {
+    color: #6b7280;
+    font-size: 13px;
+    margin-bottom: 10px;
+}
+
+/* 按钮 */
+
+.share-actions {
+    display: flex;
+    gap: 8px;
+}
 
 /* ===================== */
 /* 用户管理页面 - 浅色模式 */
@@ -314,6 +396,24 @@ body.dark .modal-content {
     color: #f8fafc;
 }
 
+body.dark .share-card {
+    background: #1e293b;
+    border-color: #334155;
+}
+
+body.dark .share-path {
+    color: #f8fafc;
+}
+
+body.dark .share-meta {
+    color: #94a3b8;
+}
+
+body.dark .share-count {
+    background: #334155;
+    color: #f8fafc;
+}
+
 /* 用户管理 */
 body.dark #userManagerPage {
     background: #080c13;
@@ -367,6 +467,7 @@ body.dark #userManagerPage select {
     color: #f8fafc;
     border: 1px solid #475569;
 }
+
 
 /* placeholder */
 body.dark input::placeholder {

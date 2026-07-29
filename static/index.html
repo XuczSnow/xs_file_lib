@@ -6,7 +6,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <title>XS File Library</title>
+    <title>Xucz File Library</title>
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="/static/style.css" rel="stylesheet">
@@ -50,8 +50,10 @@
                 </div>
             </div>
             <hr>
-
-            <button id="userManageBtn" class="btn btn-secondary w-100" onclick="showUserManager()">
+            <button id="viewSwitchBtn" class="btn btn-secondary w-100 mt-2" onclick="toggleShareView()">
+                🔗 共享管理
+            </button>
+            <button id="userManageBtn" class="btn btn-secondary w-100 mt-2" onclick="showUserManager()">
                 👥 用户管理
             </button>
 
@@ -90,44 +92,91 @@
                     <tbody id="userTable">
                     </tbody>
                 </table>
+                <hr>
             </div>
         </div>
         <div class="content">
-            <div class="header-bar">
-                <input id="search" class="form-control" placeholder="🔍 搜索文件">
+            <div id="filePage">
+                <div class="header-bar">
+                    <input id="search" class="form-control" placeholder="🔍 搜索文件">
+                </div>
+
+                <div id="uploadArea" class="toolbar-card">
+                    <div class="toolbar-row">
+                        <input type="file" id="fileInput" class="form-control">
+                        <button class="btn btn-primary" id="uploadBtn">
+                            上传
+                        </button>
+                    </div>
+                    <div class="toolbar-row">
+                        <input id="folderName" class="form-control" placeholder="📁 新建文件夹">
+                        <button class="btn btn-primary" onclick="createFolder()">
+                            创建
+                        </button>
+                    </div>
+                    <div class="toolbar-row">
+                        <select id="folderSelect" class="form-select">
+                            <option value="">
+                                .
+                            </option>
+                        </select>
+                        <label class="btn btn-secondary">
+                            目标目录
+                        </label>
+                    </div>
+                </div>
+
+                <div id="fileList">
+                </div>
             </div>
 
-            <div id="uploadArea" class="toolbar-card">
-                <div class="toolbar-row">
-                    <input type="file" id="fileInput" class="form-control">
-                    <button class="btn btn-primary" id="uploadBtn">
-                        上传
+            <div id="shareManagerPage" style="display:none">
+                <div class="share-header">
+                    <h3>🔗 共享管理</h3>
+                    <span class="share-count" id="shareCount">
+                        0 个共享
+                    </span>
+                </div>
+                <div id="shareList"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="shareModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">创建共享链接</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal">
                     </button>
                 </div>
-                <div class="toolbar-row">
-                    <input id="folderName" class="form-control" placeholder="📁 新建文件夹">
-                    <button class="btn btn-primary" onclick="createFolder()">
-                        创建
-                    </button>
-                </div>
-                <div class="toolbar-row">
-                    <select id="folderSelect" class="form-select">
-                        <option value="">
-                            .
-                        </option>
+
+                <div class="modal-body">
+                    <label>共享有效期</label>
+                    <select id="shareDays" class="form-select">
+                        <option value="1">1天</option>
+                        <option value="7" selected>7天</option>
+                        <option value="30">30天</option>
+                        <option value="90">90天</option>
+                        <option value="365">1年</option>
                     </select>
-                    <label class="btn btn-secondary">
-                        目标目录
-                    </label>
+                    <label>提取密码</label>
+                    <input id="sharePassword" class="form-control" placeholder="留空则无需密码">
                 </div>
-            </div>
-
-            <div id="fileList">
+                <div class="modal-footer">
+                    <button class="btn btn-secondary" data-bs-dismiss="modal">
+                        取消
+                    </button>
+                    <button class="btn btn-primary" id="createShareBtn">
+                        创建共享
+                    </button>
+                </div>
             </div>
         </div>
     </div>
 
     <script src="./static/app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 
 </html>

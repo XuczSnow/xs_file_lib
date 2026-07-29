@@ -48,6 +48,10 @@ logs/
 uploads/*
 !uploads/.gitkeep
 
+#配置文件
+config/*
+!config/.gitkeep
+
 # 回收站
 recycle_bin/*
 !recycle_bin/.gitkeep
