@@ -15,6 +15,7 @@ app = FastAPI()
 UPLOAD_DIR = "./uploads"
 USER_CONF = "./config/users.json"
 SHARE_CONF = "./config/shares.json"
+FPRMS_CONF = "./config/folder_permissions.json"
 
 
 os.makedirs(
@@ -22,17 +23,69 @@ os.makedirs(
     exist_ok=True
 )
 
+def hash_password(password: str):
+    return hashlib.sha256(
+        password.encode("utf-8")
+    ).hexdigest()
+
+def init_config():
+
+    # 用户配置
+
+    if not os.path.exists(USER_CONF):
+        with open(USER_CONF,"w",encoding="utf-8") as f:
+            json.dump(
+                {
+                    "admin": {
+
+                        "password":
+                            hash_password(
+                                "admin123"
+                            ),
+
+                        "permissions": [
+                            "upload",
+                            "download",
+                            "delete",
+                            "share",
+                            "share_manage",
+                            "user_manage"
+                        ]
+
+                    }
+                },
+                f,
+                indent=4,
+                ensure_ascii=False
+            )
+
+    # 共享配置
+    if not os.path.exists(SHARE_CONF):
+        with open(SHARE_CONF,"w",encoding="utf-8") as f:
+            json.dump(
+                {},
+                f,
+                indent=4,
+                ensure_ascii=False
+            )
+
+    # 文件夹权限配置
+    if not os.path.exists(FPRMS_CONF):
+        with open(FPRMS_CONF,"w",encoding="utf-8") as f:
+            json.dump(
+                {},
+                f,
+                indent=4,
+                ensure_ascii=False
+            )
+
 app.mount(
     "/static",
     StaticFiles(directory="static"),
     name="static"
 )
 
-def hash_password(password: str):
-    return hashlib.sha256(
-        password.encode("utf-8")
-    ).hexdigest()
-
+init_config()
 
 @app.get("/")
 def home():
@@ -69,7 +122,13 @@ def login(
     return {
         "success": True,
         "username": username,
-        "role": users[username]["role"]
+        # "role": users[username]["role"],
+        "permissions":
+            users[username]
+            .get(
+                "permissions",
+                []
+            )
     }
     
 @app.get("/api/users")
@@ -102,7 +161,8 @@ def change_password(
 def add_user(
     username: str = Form(...),
     password: str = Form(...),
-    role: str = Form(...)
+    # role: str = Form(...)
+    permissions: str = Form("[]")
 ):
 
     with open(USER_CONF,"r",encoding="utf-8") as f:
@@ -110,7 +170,11 @@ def add_user(
 
     users[username] = {
         "password": hash_password(password),
-        "role": role
+        # "role": role,
+        "permissions":
+            json.loads(
+                permissions
+            )
     }
 
     with open(USER_CONF,"w",encoding="utf-8") as f:
@@ -147,14 +211,60 @@ def delete_user(
     return {
         "success": True
     }
+    
+@app.get("/api/folder-permissions")
+def get_folder_permissions():
+    try:
+        with open(FPRMS_CONF, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except:
+        return {}
+    
+@app.post("/api/folder-permissions")
+def set_folder_permissions(
+    folder: str = Form(...),
+    users: str = Form(...)
+
+):
+    try:
+        with open(FPRMS_CONF,"r",encoding="utf-8") as f:
+            permissions = json.load(f)
+    except:
+        permissions = {}
+        
+    if len(users) == 0:
+        permissions.pop(folder, None)
+    else:
+        permissions[folder] = json.loads(users)
+
+    with open(FPRMS_CONF,"w",encoding="utf-8") as f:
+        json.dump(
+            permissions,
+            f,
+            indent=4,
+            ensure_ascii=False
+        )
+        
+    return {"success": True}
 
 @app.get("/api/files")
-def get_files():
+def get_files(username: str):
 
     result = {}
+    
+    with open(FPRMS_CONF,"r",encoding="utf-8") as f:
+        folder_permissions = json.load(f)
 
     for root, dirs, files in os.walk(UPLOAD_DIR):
         rel_dir = os.path.relpath(root,UPLOAD_DIR)
+        
+        folder_name = rel_dir#.split("/")[0]
+        
+        if folder_name in folder_permissions:
+            allowed_users = folder_permissions[folder_name]
+
+            if allowed_users and username not in allowed_users:
+                continue
 
         # if rel_dir == ".":
         #     rel_dir_name = "根目录"
@@ -434,9 +544,7 @@ def share_check(
         "success": True
     }
     
-@app.get(
-    "/api/share-download/{share_id}"
-)
+@app.get("/api/share-download/{share_id}")
 def share_download(
     share_id: str
 ):
@@ -449,19 +557,35 @@ def share_download(
 
         shares = json.load(f)
 
+    if share_id not in shares:
+
+        return {
+            "success": False,
+            "message": "共享不存在"
+        }
+
     share = shares[share_id]
 
-    return FileResponse(
+    expire_time = datetime.strptime(
+        share["expire"],
+        "%Y-%m-%d %H:%M:%S"
+    )
 
+    if datetime.now() > expire_time:
+
+        return {
+            "success": False,
+            "message": "共享已过期"
+        }
+
+    return FileResponse(
         os.path.join(
             UPLOAD_DIR,
             share["path"]
         ),
-
-        filename=
-            os.path.basename(
-                share["path"]
-            )
+        filename=os.path.basename(
+            share["path"]
+        )
     )
     
 @app.get("/api/shares")
@@ -501,4 +625,69 @@ def delete_share(
 
     return {
         "success": True
+    }
+
+from datetime import datetime
+
+@app.get("/api/share-info/{share_id}")
+def share_info(share_id: str):
+
+    try:
+
+        with open(
+            SHARE_CONF,
+            "r",
+            encoding="utf-8"
+        ) as f:
+
+            shares = json.load(f)
+
+    except:
+
+        return {
+            "success": False
+        }
+
+    if share_id not in shares:
+
+        return {
+            "success": False,
+            "message": "共享不存在"
+        }
+
+    share = shares[share_id]
+
+    expire_time = datetime.strptime(
+        share["expire"],
+        "%Y-%m-%d %H:%M:%S"
+    )
+
+    expired = (
+        datetime.now()
+        > expire_time
+    )
+
+    return {
+
+        "success": True,
+
+        "file_name":
+            os.path.basename(
+                share["path"]
+            ),
+
+        "expire":
+            share["expire"],
+
+        "expired":
+            expired,
+
+        "has_password":
+            bool(
+                share.get(
+                    "password",
+                    ""
+                )
+            )
+
     }

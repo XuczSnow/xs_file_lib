@@ -43,10 +43,10 @@ async function login() {
             result.username
         );
 
-        localStorage.setItem(
-            "role",
-            result.role
-        );
+        // localStorage.setItem(
+        //     "role",
+        //     result.role
+        // );
 
         document.getElementById(
             "login-page"
@@ -61,10 +61,15 @@ async function login() {
         ).innerText =
             result.username;
 
-        document.getElementById(
-            "currentRole"
-        ).innerText =
-            result.role;
+        // document.getElementById(
+        //     "currentRole"
+        // ).innerText =
+        //     result.role;
+
+        localStorage.setItem(
+            "permissions",
+            JSON.stringify(result.permissions)
+        );
 
         initPermission();
         loadFolders();
@@ -74,34 +79,39 @@ async function login() {
     }
 }
 
+function hasPermission(name) {
+    const permissions =
+        JSON.parse(
+            localStorage.getItem("permissions") || "[]"
+        );
+    return permissions.includes(name);
+}
+
 function initPermission() {
-    const role = localStorage.getItem("role");
+    // const role = localStorage.getItem("role");
     const uploadArea = document.getElementById("uploadArea");
     const userManageBtn = document.getElementById("userManageBtn");
-    const shareManageBtn = document.getElementById("shareManageBtn");
+    const viewSwitchBtn = document.getElementById("viewSwitchBtn");
 
-    if (role === "viewer") {
-
+    // if (role === "viewer") {
+    if (!hasPermission("upload")) {
         if (uploadArea) {
-            uploadArea.style.display =
-                "none";
+            uploadArea.style.display = "none";
         }
-
     }
 
-    if (role !== "admin") {
-
+    // if (role !== "admin") {
+    if (!hasPermission("user_manage"))
         if (userManageBtn) {
-            userManageBtn.style.display =
-                "none";
+            userManageBtn.style.display = "none";
         }
 
-        if (shareManageBtn) {
-            shareManageBtn.style.display =
-                "none";
+    if (!hasPermission("share_manage"))
+        if (viewSwitchBtn) {
+            viewSwitchBtn.style.display = "none";
         }
 
-    }
+    // }
 
 }
 
@@ -146,9 +156,11 @@ async function loadUsers() {
             <td>
                 ${name}
             </td>
-            <td>
-                ${users[name].role}
-            </td>
+            <!--
+                <td>
+                    ${users[name].role}
+                </td>
+            -->
             <td>
                 <button
                     class="btn btn-danger btn-sm"
@@ -168,6 +180,20 @@ async function addUser() {
 
     const fd = new FormData();
 
+    const permissions = [];
+
+    document
+        .querySelectorAll(
+            ".permission-list input:checked"
+        )
+        .forEach(item => {
+
+            permissions.push(
+                item.value
+            );
+
+        });
+
     fd.append(
         "username",
         document.getElementById(
@@ -182,11 +208,18 @@ async function addUser() {
         ).value
     );
 
+    // fd.append(
+    //     "role",
+    //     document.getElementById(
+    //         "newRole"
+    //     ).value
+    // );
+
     fd.append(
-        "role",
-        document.getElementById(
-            "newRole"
-        ).value
+        "permissions",
+        JSON.stringify(
+            permissions
+        )
     );
 
     await fetch(
@@ -257,7 +290,7 @@ async function uploadFile() {
 
 async function loadFiles() {
 
-    const response = await fetch("/api/files");
+    const response = await fetch(`/api/files?username=${localStorage.getItem("username")}`);
     const data = await response.json();
     const fileList = document.getElementById("fileList");
 
@@ -308,6 +341,14 @@ async function loadFiles() {
                 data-folder="${folderId}"
                 onclick="toggleFolder('${folderId}')">
                 ▸ 📁 ${folder}
+                ${hasPermission("download") ? 
+                `
+                <button
+                    class="btn-action"
+                    onclick="showFolderPermission('${folder}')">
+                    权限
+                </button>
+                ` : "" }
             </div>
             <div
                 id="folder-${folderId}"
@@ -332,31 +373,32 @@ async function loadFiles() {
                     ├─ 📄 ${file.name}
                 </span>
                 <span class="file-actions">
+                    ${hasPermission("download") ?
+                    `
                     <a href="/api/download/${encodeURIComponent(file.path)}"
                     target="_blank"
                     class="btn-action">
                         下载
                     </a>
+                    ` : ""}
 
-                    ${localStorage.getItem("role") != "viewer" ?
+                    ${hasPermission("share") ?
                     `
                     <button
                         onclick="shareFile('${file.path}')"
                         class="btn-action">
                         共享
                     </button>
-                    `: ""}
+                    ` : ""}
 
-                    ${localStorage.getItem("role") === "admin" ?
+                    ${hasPermission("delete") ?
                     `
                         <button
                             onclick="deleteFile('${file.path}')"
                             class="btn-action danger">
                             删除
                         </button>
-                        `
-                    :
-                    ""}
+                    ` : ""}
                 </span>
             </div>
         `;
@@ -812,7 +854,98 @@ async function deleteShare(id) {
     );
 
     loadShares();
-
 }
 
+let currentFolder = "";
+
+async function showFolderPermission(folder){
+
+    currentFolder = folder;
+
+    const users =
+        await fetch(
+            "./api/users"
+        ).then(
+            r => r.json()
+        );
+
+    let html = "";
+
+    Object.keys(users)
+        .forEach(name => {
+
+        html += `
+
+        <label>
+
+            <input
+                type="checkbox"
+                class="folder-user"
+                value="${name}">
+
+            ${name}
+
+        </label>
+
+        <br>
+
+        `;
+
+    });
+
+    document.getElementById(
+        "folderPermissionUsers"
+    ).innerHTML = html;
+
+    new bootstrap.Modal(
+        document.getElementById(
+            "folderPermissionModal"
+        )
+    ).show();
+}
+
+async function saveFolderPermission(){
+
+    const selected = [];
+
+    document
+        .querySelectorAll(
+            ".folder-user:checked"
+        )
+        .forEach(item => {
+
+            selected.push(
+                item.value
+            );
+
+        });
+
+    const fd =
+        new FormData();
+
+    fd.append(
+        "folder",
+        currentFolder
+    );
+
+    fd.append(
+        "users",
+        JSON.stringify(
+            selected
+        )
+    );
+
+    await fetch(
+        "./api/folder-permissions",
+        {
+            method:"POST",
+            body:fd
+        }
+    );
+
+    alert(
+        "权限保存成功"
+    );
+
+}
 

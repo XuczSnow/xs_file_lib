@@ -1,6 +1,7 @@
 body {
     margin: 0;
     font-family: Segoe UI;
+    overflow: hidden;
 }
 
 .login-container {
@@ -12,7 +13,7 @@ body {
 }
 
 .sidebar {
-    width: 240px;
+    width: 280px;
     height: 100vh;
     background: #1f2937;
     color: white;
@@ -21,9 +22,30 @@ body {
     overflow-y:auto;
 }
 
-.content {
-    margin-left: 240px;
-    padding: 20px;
+.sidebar {
+    overflow-y: scroll;
+    scrollbar-width: thin;
+    scrollbar-color:
+        transparent
+        transparent;
+}
+
+.sidebar:hover {
+    scrollbar-color:
+        rgba(148,163,184,.5)
+        transparent;
+}
+
+.sidebar::-webkit-scrollbar {
+    width: 6px;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+    background: transparent;
+}
+
+.sidebar:hover::-webkit-scrollbar-thumb {
+    background: rgba(148,163,184,.5);
 }
 
 .user-panel {
@@ -36,11 +58,34 @@ body {
 
 .user-panel div {
     margin: 6px 0;
-    font-size: 14px;
+    font-size: 18px;
 }
 
 .sidebar button {
-    width: 100%;
+    border-radius: 8px;
+    transition: .2s;
+}
+
+.content {
+    margin-left: 280px;
+    height: 100vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-gutter: stable;
+    padding: 20px;
+}
+
+.content::-webkit-scrollbar {
+    width: 8px;
+}
+
+.content::-webkit-scrollbar-thumb {
+    background: rgba(148,163,184,.4);
+    border-radius: 999px;
+}
+
+.content::-webkit-scrollbar-thumb:hover {
+    background: rgba(148,163,184,.7);
 }
 
 .header-bar {
@@ -54,12 +99,22 @@ body {
     overflow: hidden;
 }
 
-.folder-title {
+/* .folder-title {
+    display: flex;
     background: #f3f4f6;
     padding: 12px;
     cursor: pointer;
     font-weight: bold;
     user-select: none;
+} */
+
+.folder-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #f3f4f6;
+    padding: 12px;
+    font-weight: bold;
 }
 
 .folder-title:hover {
@@ -68,6 +123,7 @@ body {
 
 .folder-content {
     padding-left: 30px;
+    padding-right: 12px;
     border-left: 2px solid #d1d5db;
 }
 
@@ -311,6 +367,14 @@ body.dark .sidebar {
     color: #f8fafc;
 }
 
+body.dark .sidebar::-webkit-scrollbar-thumb {
+    background: rgba(100,116,139,.45);
+}
+
+body.dark .sidebar::-webkit-scrollbar-thumb:hover {
+    background: rgba(148,163,184,.7);
+}
+
 /* 主内容区 */
 body.dark .content {
     background: #0f172a;
@@ -417,12 +481,6 @@ body.dark .share-count {
 /* 用户管理 */
 body.dark #userManagerPage {
     background: #080c13;
-    color: #f8fafc;
-}
-
-/* 用户管理页面 */
-body.dark #userManagerPage {
-    background: #0f172a;
     color: #f8fafc;
 }
 
