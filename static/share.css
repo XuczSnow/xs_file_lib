@@ -1,0 +1,132 @@
+body {
+
+    background: #f8fafc;
+
+    min-height: 100vh;
+
+    display: flex;
+
+    justify-content: center;
+
+    align-items: center;
+
+    padding: 20px;
+
+}
+
+.share-card {
+
+    width: 100%;
+
+    max-width: 480px;
+
+    background: white;
+
+    border-radius: 16px;
+
+    padding: 30px;
+
+    box-shadow:
+        0 10px 30px rgba(0, 0, 0, .08);
+
+}
+
+.file-icon {
+
+    font-size: 56px;
+
+    text-align: center;
+
+    margin-bottom: 15px;
+
+}
+
+.file-name {
+
+    font-size: 18px;
+
+    font-weight: 600;
+
+    text-align: center;
+
+    margin-bottom: 20px;
+
+    word-break: break-all;
+
+}
+
+.info-box {
+
+    background: #f8fafc;
+
+    padding: 14px;
+
+    border-radius: 10px;
+
+    margin-bottom: 20px;
+
+}
+
+.info-item {
+
+    font-size: 14px;
+
+    color: #64748b;
+
+    margin-bottom: 6px;
+
+}
+
+#errorText {
+
+    margin-top: 10px;
+
+    color: #dc2626;
+
+}
+
+.download-btn {
+
+    width: 100%;
+
+}
+
+@media (prefers-color-scheme: dark) {
+
+    body {
+
+        background: #0f172a;
+
+    }
+
+    .share-card {
+
+        background: #1e293b;
+
+        color: white;
+
+    }
+
+    .info-box {
+
+        background: #334155;
+
+    }
+
+    .info-item {
+
+        color: #cbd5e1;
+
+    }
+
+    .form-control {
+
+        background: #0f172a;
+
+        color: white;
+
+        border-color: #475569;
+
+    }
+
+}

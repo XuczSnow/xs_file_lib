@@ -382,6 +382,7 @@ def create_folder(folder_name: str = Form(...)):
 @app.post("/api/share")
 def create_share(
     filepath: str = Form(...),
+    share_type: str = Form(...),
     days: int = Form(...),
     password: str = Form("")
 ):
@@ -408,8 +409,7 @@ def create_share(
 
         "path": filepath,
 
-        "created_by":
-            "system",
+        "type": share_type,
 
         "expire":
             expire_time.strftime(
@@ -436,14 +436,10 @@ def create_share(
         )
 
     return {
-
         "success": True,
-
         "share_id": share_id,
-
         "expire":
             shares[share_id]["expire"]
-
     }
 
 # @app.get("/share/{share_id}")
@@ -497,13 +493,72 @@ def create_share(
 #     )
 
 @app.get("/share/{share_id}")
-def access_share(
-    share_id: str
+def access_share(share_id: str):
+
+    with open(SHARE_CONF,"r",encoding="utf-8") as f:
+        shares = json.load(f)
+
+    if share_id not in shares:
+        return {"success": False}
+
+    return FileResponse("static/share.html")
+
+@app.get(
+    "/api/share-content/{share_id}"
+)
+def share_content(share_id: str):
+
+    with open(SHARE_CONF,"r",encoding="utf-8") as f:
+        shares = json.load(f)
+
+    share = shares[share_id]
+
+    if share["type"] == "file":
+        return {
+            "type":"file",
+            "name":
+                os.path.basename(
+                    share["path"]
+                )
+        }
+
+    folder_path = os.path.join(
+        UPLOAD_DIR,
+        share["path"]
+    )
+
+    files = []
+
+    for file in os.listdir(folder_path):
+
+        if os.path.isfile(
+            os.path.join(folder_path,file)):
+
+            files.append({"name": file})
+
+    return {
+        "success": True,
+        "type": "folder",
+        "share_id": share_id,
+        "folder": share["path"],
+        "files": files
+    }
+
+@app.get(
+"/api/share-folder-download/{share_id}/{filename:path}"
+)
+def share_folder_download(
+    share_id: str,
+    filename: str
 ):
 
-    return FileResponse(
-        "static/share.html"
-    )
+    with open(SHARE_CONF,"r",encoding="utf-8") as f:
+        shares = json.load(f)
+
+    share = shares[share_id]
+    file_path = os.path.join(UPLOAD_DIR,share["path"],filename)
+
+    return FileResponse(file_path)
 
 @app.post("/api/share-check")
 def share_check(
@@ -511,12 +566,7 @@ def share_check(
     password: str = Form(...)
 ):
 
-    with open(
-        SHARE_CONF,
-        "r",
-        encoding="utf-8"
-    ) as f:
-
+    with open(SHARE_CONF,"r",encoding="utf-8") as f:
         shares = json.load(f)
 
     if share_id not in shares:
@@ -633,23 +683,13 @@ from datetime import datetime
 def share_info(share_id: str):
 
     try:
-
-        with open(
-            SHARE_CONF,
-            "r",
-            encoding="utf-8"
-        ) as f:
-
+        with open(SHARE_CONF,"r",encoding="utf-8") as f:
             shares = json.load(f)
 
     except:
-
-        return {
-            "success": False
-        }
+        return {"success": False}
 
     if share_id not in shares:
-
         return {
             "success": False,
             "message": "共享不存在"
@@ -670,11 +710,12 @@ def share_info(share_id: str):
     return {
 
         "success": True,
+        
+        "type":
+            share.get("type","file"),
 
-        "file_name":
-            os.path.basename(
-                share["path"]
-            ),
+        "name":
+            os.path.basename(share["path"]),
 
         "expire":
             share["expire"],
@@ -683,11 +724,6 @@ def share_info(share_id: str):
             expired,
 
         "has_password":
-            bool(
-                share.get(
-                    "password",
-                    ""
-                )
-            )
+            bool(share.get("password",""))
 
     }

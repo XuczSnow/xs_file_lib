@@ -1,5 +1,3 @@
-let currentShareFile = "";
-
 document.addEventListener("DOMContentLoaded", function () {
     const loginBtn = document.getElementById("loginBtn");
     const uploadBtn = document.getElementById("uploadBtn");
@@ -341,14 +339,24 @@ async function loadFiles() {
                 data-folder="${folderId}"
                 onclick="toggleFolder('${folderId}')">
                 ▸ 📁 ${folder}
-                ${hasPermission("download") ? 
-                `
-                <button
-                    class="btn-action"
-                    onclick="showFolderPermission('${folder}')">
-                    权限
-                </button>
-                ` : "" }
+                <div class="folder-actions">
+                    ${hasPermission("share") ?
+                    `
+                    <button
+                        class="btn-action"
+                        onclick="shareFile('${folder}','folder')">
+                        共享
+                    </button>
+                    ` : ""}
+                    ${hasPermission("share_manage") ?
+                    `
+                    <button
+                        class="btn-action"
+                        onclick="showFolderPermission('${folder}')">
+                        权限
+                    </button>
+                    ` : ""}
+                </div>
             </div>
             <div
                 id="folder-${folderId}"
@@ -385,7 +393,7 @@ async function loadFiles() {
                     ${hasPermission("share") ?
                     `
                     <button
-                        onclick="shareFile('${file.path}')"
+                        onclick="shareFile('${file.path}', 'file')"
                         class="btn-action">
                         共享
                     </button>
@@ -554,6 +562,7 @@ async function createFolder() {
         ).value = "";
 
         loadFolders();
+        loadFiles();
 
     } else {
 
@@ -562,8 +571,12 @@ async function createFolder() {
     }
 }
 
-function shareFile(path) {
+let currentShareFile = "";
+let currentShareType = "";
+
+function shareFile(path, type) {
     currentShareFile = path;
+    currentShareType = type;
     const modal =
         new bootstrap.Modal(document.getElementById("shareModal"));
     modal.show();
@@ -597,6 +610,7 @@ async function createShareLink() {
     const fd = new FormData();
 
     fd.append("filepath", currentShareFile);
+    fd.append("share_type", currentShareType);
     fd.append("days", days);
     fd.append("password", password);
 
@@ -613,13 +627,9 @@ async function createShareLink() {
         await response.json();
 
     if (result.success) {
-
         const shareUrl =
-
             window.location.origin +
-
             "/share/" +
-
             result.share_id;
 
         navigator.clipboard.writeText(
@@ -764,7 +774,7 @@ async function loadShares() {
 
             <div class="share-path">
 
-                📄 ${share.path}
+                ${share.type === "folder" ? "📁" : "📄"} ${share.path}
 
             </div>
 
@@ -858,7 +868,7 @@ async function deleteShare(id) {
 
 let currentFolder = "";
 
-async function showFolderPermission(folder){
+async function showFolderPermission(folder) {
 
     currentFolder = folder;
 
@@ -874,7 +884,7 @@ async function showFolderPermission(folder){
     Object.keys(users)
         .forEach(name => {
 
-        html += `
+            html += `
 
         <label>
 
@@ -891,7 +901,7 @@ async function showFolderPermission(folder){
 
         `;
 
-    });
+        });
 
     document.getElementById(
         "folderPermissionUsers"
@@ -904,7 +914,7 @@ async function showFolderPermission(folder){
     ).show();
 }
 
-async function saveFolderPermission(){
+async function saveFolderPermission() {
 
     const selected = [];
 
@@ -938,8 +948,8 @@ async function saveFolderPermission(){
     await fetch(
         "./api/folder-permissions",
         {
-            method:"POST",
-            body:fd
+            method: "POST",
+            body: fd
         }
     );
 
