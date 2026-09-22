@@ -9,6 +9,8 @@ import json
 import uuid
 import shutil
 import hashlib
+import zipfile
+import tempfile
 
 app = FastAPI()
 
@@ -714,8 +716,8 @@ def share_info(share_id: str):
         "type":
             share.get("type","file"),
 
-        "name":
-            os.path.basename(share["path"]),
+        "name": share["path"],
+            # os.path.basename(share["path"]),
 
         "expire":
             share["expire"],
@@ -727,3 +729,86 @@ def share_info(share_id: str):
             bool(share.get("password",""))
 
     }
+    
+@app.get(
+    "/api/share-folder-zip/{share_id}"
+)
+def share_folder_zip(
+    share_id: str
+):
+
+    with open(
+        SHARE_CONF,
+        "r",
+        encoding="utf-8"
+    ) as f:
+
+        shares = json.load(f)
+
+    if share_id not in shares:
+
+        return {
+            "success": False,
+            "message": "共享不存在"
+        }
+
+    share = shares[share_id]
+
+    if share["type"] != "folder":
+
+        return {
+            "success": False,
+            "message": "不是文件夹共享"
+        }
+
+    folder_path = os.path.join(
+        UPLOAD_DIR,
+        share["path"]
+    )
+
+    if not os.path.exists(folder_path):
+
+        return {
+            "success": False,
+            "message": "文件夹不存在"
+        }
+
+    temp_zip = tempfile.NamedTemporaryFile(
+        delete=False,
+        suffix=".zip"
+    )
+
+    with zipfile.ZipFile(
+        temp_zip.name,
+        "w",
+        zipfile.ZIP_DEFLATED
+    ) as zipf:
+
+        for root, dirs, files in os.walk(folder_path):
+
+            for file in files:
+
+                full_path = os.path.join(
+                    root,
+                    file
+                )
+
+                arc_name = os.path.relpath(
+                    full_path,
+                    folder_path
+                )
+
+                zipf.write(
+                    full_path,
+                    arc_name
+                )
+
+    return FileResponse(
+        temp_zip.name,
+        filename=
+            os.path.basename(
+                share["path"]
+            ) + ".zip",
+        media_type="application/zip"
+    )
+    

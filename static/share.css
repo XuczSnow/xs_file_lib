@@ -31,7 +31,7 @@ body {
 
 }
 
-.file-icon {
+/* .file-icon {
 
     font-size: 56px;
 
@@ -52,6 +52,22 @@ body {
     margin-bottom: 20px;
 
     word-break: break-all;
+
+} */
+
+.folder-header {
+
+    text-align: center;
+
+    margin-bottom: 10px;
+
+}
+
+.folder-download {
+
+    text-align: center;
+
+    margin-bottom: 20px;
 
 }
 

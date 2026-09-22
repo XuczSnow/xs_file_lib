@@ -329,6 +329,7 @@ async function loadFiles() {
         // 普通文件夹
         const folderDiv = document.createElement("div");
         const folderId = folder.replaceAll("/", "_").replaceAll("\\", "_");
+        const folderShare = folder.replaceAll("\\", "/");
 
         folderDiv.className =
             "folder-card";
@@ -344,7 +345,7 @@ async function loadFiles() {
                     `
                     <button
                         class="btn-action"
-                        onclick="shareFile('${folder}','folder')">
+                        onclick="shareFile('${folderShare}','folder')">
                         共享
                     </button>
                     ` : ""}
