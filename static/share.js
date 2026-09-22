@@ -122,22 +122,24 @@ async function verifyShare() {
         const data =
             await info.json();
 
-        if (data.type === "file") {
+        // if (data.type === "file") {
 
-            window.location =
-                "/api/share-download/" +
-                currentShareId;
+        //     window.location =
+        //         "/api/share-download/" +
+        //         currentShareId;
 
-        }
-        else {
+        // }
+        // else {
 
             renderFolder(data);
 
-        }
+        // }
 
     }
 
 }
+
+let imageFiles = [];
 
 function renderFolder(data) {
 
@@ -145,7 +147,7 @@ function renderFolder(data) {
         ".share-card"
     ).innerHTML = `
         <div class="folder-header">
-            <h4>📁 ${data.folder}</h4>
+            <h4>📁 ${data.name}</h4>
         </div>
 
         <div class="folder-download">
@@ -164,8 +166,28 @@ function renderFolder(data) {
         document.getElementById(
             "folderFiles"
         );
-
+    
     data.files.forEach(file => {
+        let full_path = ""
+        if (data.type === "file")
+            full_path = data.path;
+        else
+        {
+            full_path = data.name + "/" + file.name;
+
+            const ext =
+                file.name
+                    .split(".")
+                    .pop()
+                    .toLowerCase();
+
+            if (["jpg","jpeg","png","gif","webp","bmp"].includes(ext)) {
+                imageFiles.push({
+                    path: full_path,
+                    name: file.name
+                });
+            }
+        }
 
         container.innerHTML += `
 
@@ -178,7 +200,7 @@ function renderFolder(data) {
                 border-bottom:1px solid #e5e7eb;
             ">
 
-            <span>
+            <span class="share-file-name" onclick="previewFile('${full_path}', imageFiles)">
 
                 📄 ${file.name}
 

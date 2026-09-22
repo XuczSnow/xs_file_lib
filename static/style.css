@@ -140,6 +140,11 @@ body {
 
 .file-name {
     flex: 1;
+    cursor: pointer;
+}
+
+.file-name:hover {
+    color: #2563eb;
 }
 
 .file-actions {

@@ -509,27 +509,27 @@ def access_share(share_id: str):
     "/api/share-content/{share_id}"
 )
 def share_content(share_id: str):
-
+    files = []
     with open(SHARE_CONF,"r",encoding="utf-8") as f:
         shares = json.load(f)
 
     share = shares[share_id]
 
     if share["type"] == "file":
+        files.append({"name": os.path.basename(share["path"])})
         return {
+            "success": True,
             "type":"file",
-            "name":
-                os.path.basename(
-                    share["path"]
-                )
+            "share_id": share_id,
+            "path": share["path"],
+            "name": os.path.basename(share["path"]),
+            "files": files
         }
 
     folder_path = os.path.join(
         UPLOAD_DIR,
         share["path"]
     )
-
-    files = []
 
     for file in os.listdir(folder_path):
 
@@ -542,7 +542,8 @@ def share_content(share_id: str):
         "success": True,
         "type": "folder",
         "share_id": share_id,
-        "folder": share["path"],
+        "path": share["path"],
+        "name": share["path"],
         "files": files
     }
 

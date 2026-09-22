@@ -286,6 +286,8 @@ async function uploadFile() {
     }
 }
 
+let imageFiles = [];
+
 async function loadFiles() {
 
     const response = await fetch(`/api/files?username=${localStorage.getItem("username")}`);
@@ -342,7 +344,7 @@ async function loadFiles() {
                 ▸ 📁 ${folder}
                 <div class="folder-actions">
                     ${hasPermission("share") ?
-                    `
+                `
                     <button
                         class="btn-action"
                         onclick="shareFile('${folderShare}','folder')">
@@ -350,7 +352,7 @@ async function loadFiles() {
                     </button>
                     ` : ""}
                     ${hasPermission("share_manage") ?
-                    `
+                `
                     <button
                         class="btn-action"
                         onclick="showFolderPermission('${folder}')">
@@ -376,9 +378,22 @@ async function loadFiles() {
             );
 
         data[folder].forEach(file => {
+            const ext =
+                file.name
+                    .split(".")
+                    .pop()
+                    .toLowerCase();
+
+            if (["jpg","jpeg","png","gif","webp","bmp"].includes(ext)) {
+                imageFiles.push({
+                    path: file.path,
+                    name: file.name
+                });
+            }
+
             content.innerHTML += `
             <div class="file-item">
-                <span class="file-name">
+                <span class="file-name" onclick="previewFile('${file.path}', imageFiles)">
                     ├─ 📄 ${file.name}
                 </span>
                 <span class="file-actions">

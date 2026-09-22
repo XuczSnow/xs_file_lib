@@ -55,6 +55,16 @@ body {
 
 }
 
+.share-file-name {
+    flex: 1;
+    cursor: pointer;
+}
+
+.share-file-name:hover {
+    color: #2563eb;
+}
+
+
 .folder-header {
 
     text-align: center;
