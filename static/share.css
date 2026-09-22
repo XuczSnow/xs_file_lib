@@ -31,7 +31,7 @@ body {
 
 }
 
-/* .file-icon {
+.file-icon {
 
     font-size: 56px;
 
@@ -53,13 +53,13 @@ body {
 
     word-break: break-all;
 
-} */
+}
 
 .folder-header {
 
     text-align: center;
 
-    margin-bottom: 10px;
+    margin-bottom: 20px;
 
 }
 

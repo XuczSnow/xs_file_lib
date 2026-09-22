@@ -144,23 +144,6 @@ function renderFolder(data) {
     document.querySelector(
         ".share-card"
     ).innerHTML = `
-
-        // <div class="file-icon">
-
-        //     📁
-
-        // </div>
-
-        // <h3 class="text-center">
-
-        //     文件夹共享
-
-        // </h3>
-
-        // <div class="file-name">
-        //     ${data.folder}
-        // </div>
-
         <div class="folder-header">
             <h4>📁 ${data.folder}</h4>
         </div>
@@ -168,14 +151,13 @@ function renderFolder(data) {
         <div class="folder-download">
             <button class="btn btn-primary btn-sm"
                 onclick="downloadFolderZip('${data.share_id}')">
-                📦 打包下载
+                📦 打包下载所有文件
             </button>
         </div>
 
         <div id="folderFiles">
 
         </div>
-
     `;
 
     const container =
