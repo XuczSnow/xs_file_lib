@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI, UploadFile, File, Form, Request
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -18,7 +18,8 @@ UPLOAD_DIR = "./uploads"
 USER_CONF = "./config/users.json"
 SHARE_CONF = "./config/shares.json"
 FPRMS_CONF = "./config/folder_permissions.json"
-
+ACCESS_LOG_CONF = "./config/share_access_log.json"
+UPLOAD_LINK_CONF = "./config/upload_links.json"
 
 os.makedirs(
     UPLOAD_DIR,
@@ -29,6 +30,37 @@ def hash_password(password: str):
     return hashlib.sha256(
         password.encode("utf-8")
     ).hexdigest()
+
+def write_share_access_log(data):
+
+    try:
+
+        with open(
+            ACCESS_LOG_CONF,
+            "r",
+            encoding="utf-8"
+        ) as f:
+
+            logs = json.load(f)
+
+    except:
+
+        logs = []
+
+    logs.append(data)
+
+    with open(
+        ACCESS_LOG_CONF,
+        "w",
+        encoding="utf-8"
+    ) as f:
+
+        json.dump(
+            logs,
+            f,
+            indent=4,
+            ensure_ascii=False
+        )
 
 def init_config():
 
@@ -80,6 +112,30 @@ def init_config():
                 indent=4,
                 ensure_ascii=False
             )
+    
+    # 文件共享log   
+    if not os.path.exists(ACCESS_LOG_CONF):
+        with open(
+            ACCESS_LOG_CONF,
+            "w",
+            encoding="utf-8"
+        ) as f:
+
+            json.dump(
+                [],
+                f,
+                indent=4,
+                ensure_ascii=False
+            )
+            
+    # 上传配置
+    if not os.path.exists(UPLOAD_LINK_CONF):
+        with open(
+            UPLOAD_LINK_CONF,
+            "w",
+            encoding="utf-8"
+        ) as f:
+            json.dump({},f)
 
 app.mount(
     "/static",
@@ -390,52 +446,46 @@ def create_share(
 ):
 
     share_id = str(uuid.uuid4())[:8]
-
     expire_time = datetime.now() + timedelta(days=days)
 
     try:
-
-        with open(
-            SHARE_CONF,
-            "r",
-            encoding="utf-8"
-        ) as f:
-
+        with open(SHARE_CONF,"r",encoding="utf-8") as f:
             shares = json.load(f)
-
     except:
-
         shares = {}
 
     shares[share_id] = {
-
         "path": filepath,
-
         "type": share_type,
-
+        "view_count": 0,
         "expire":
             expire_time.strftime(
                 "%Y-%m-%d %H:%M:%S"
             ),
-            
         "password":
             hash_password(password)
             if password
             else ""
         }
+    
+    for sid, share in shares.items():
+        if share["path"] == filepath:
 
-    with open(
-        SHARE_CONF,
-        "w",
-        encoding="utf-8"
-    ) as f:
+            expire_time = datetime.strptime(
+                share["expire"],
+                "%Y-%m-%d %H:%M:%S"
+            )
 
-        json.dump(
-            shares,
-            f,
-            indent=4,
-            ensure_ascii=False
-        )
+            if expire_time > datetime.now():
+                return {
+                    "success": True,
+                    "share_id": sid,
+                    "expire": share["expire"],
+                    "duplicate": True
+                }
+
+    with open(SHARE_CONF,"w",encoding="utf-8") as f:
+        json.dump(shares,f,indent=4,ensure_ascii=False)
 
     return {
         "success": True,
@@ -444,55 +494,6 @@ def create_share(
             shares[share_id]["expire"]
     }
 
-# @app.get("/share/{share_id}")
-# def access_share(
-#     share_id: str
-# ):
-
-#     try:
-
-#         with open(
-#             SHARE_CONF,
-#             "r",
-#             encoding="utf-8"
-#         ) as f:
-
-#             shares = json.load(f)
-
-#     except:
-
-#         shares = {}
-
-#     if share_id not in shares:
-
-#         return {
-#             "success": False,
-#             "message": "共享不存在"
-#         }
-
-#     share = shares[share_id]
-
-#     expire_time = datetime.strptime(
-#         share["expire"],
-#         "%Y-%m-%d %H:%M:%S"
-#     )
-
-#     if datetime.now() > expire_time:
-
-#         return {
-#             "success": False,
-#             "message": "共享已过期"
-#         }
-
-#     filepath = share["path"]
-
-#     return FileResponse(
-#         os.path.join(
-#             UPLOAD_DIR,
-#             filepath
-#         ),
-#         filename=os.path.basename(filepath)
-#     )
 
 @app.get("/share/{share_id}")
 def access_share(share_id: str):
@@ -566,7 +567,7 @@ def share_folder_download(
 @app.post("/api/share-check")
 def share_check(
     share_id: str = Form(...),
-    password: str = Form(...)
+    password: str = Form("")
 ):
 
     with open(SHARE_CONF,"r",encoding="utf-8") as f:
@@ -683,7 +684,10 @@ def delete_share(
 from datetime import datetime
 
 @app.get("/api/share-info/{share_id}")
-def share_info(share_id: str):
+def share_info(
+    share_id: str,
+    request: Request
+):
 
     try:
         with open(SHARE_CONF,"r",encoding="utf-8") as f:
@@ -699,6 +703,32 @@ def share_info(share_id: str):
         }
 
     share = shares[share_id]
+    share["view_count"] = share.get("view_count",0) + 1
+    
+    with open(SHARE_CONF,"w",encoding="utf-8") as f:
+        json.dump(
+            shares,
+            f,
+            indent=4,
+            ensure_ascii=False
+        )
+
+    
+    write_share_access_log({
+        "share_id": share_id,
+        "path": share["path"],
+        "visit_time":
+            datetime.now().strftime(
+                "%Y-%m-%d %H:%M:%S"
+            ),
+        "ip":
+            request.client.host,
+        "user_agent":
+            request.headers.get(
+                "User-Agent",
+                ""
+            )
+    })
 
     expire_time = datetime.strptime(
         share["expire"],
@@ -709,7 +739,7 @@ def share_info(share_id: str):
         datetime.now()
         > expire_time
     )
-
+    
     return {
 
         "success": True,
@@ -730,6 +760,27 @@ def share_info(share_id: str):
             bool(share.get("password",""))
 
     }
+    
+@app.get("/api/share-access-log/{share_id}")
+def get_share_access_log(
+    share_id: str
+):
+    try:
+        with open(
+            ACCESS_LOG_CONF,
+            "r",
+            encoding="utf-8"
+        ) as f:
+            logs = json.load(f)
+
+    except:
+        return []
+
+    return [
+        item
+        for item in logs
+        if item["share_id"] == share_id
+    ]
     
 @app.get(
     "/api/share-folder-zip/{share_id}"
@@ -813,3 +864,213 @@ def share_folder_zip(
         media_type="application/zip"
     )
     
+@app.post(
+    "/api/create-upload-link"
+)
+def create_upload_link(
+
+    folder: str = Form(...),
+
+    days: int = Form(...),
+
+    password: str = Form("")
+
+):
+
+    upload_id = str(
+        uuid.uuid4()
+    )[:8]
+
+    expire_time = (
+        datetime.now()
+        + timedelta(days=days)
+    )
+
+    try:
+
+        with open(
+            UPLOAD_LINK_CONF,
+            "r",
+            encoding="utf-8"
+        ) as f:
+
+            links = json.load(f)
+
+    except:
+
+        links = {}
+
+    links[upload_id] = {
+
+        "folder": folder,
+
+        "expire":
+            expire_time.strftime(
+                "%Y-%m-%d %H:%M:%S"
+            ),
+
+        "password":
+            hash_password(password)
+            if password
+            else "",
+
+        "upload_count": 0
+
+    }
+
+    with open(
+        UPLOAD_LINK_CONF,
+        "w",
+        encoding="utf-8"
+    ) as f:
+
+        json.dump(
+            links,
+            f,
+            indent=4,
+            ensure_ascii=False
+        )
+
+    return {
+
+        "success": True,
+
+        "upload_id":
+            upload_id
+
+    }
+    
+@app.get(
+    "/upload/{upload_id}"
+)
+def upload_page(
+    upload_id: str
+):
+
+    return FileResponse(
+        "static/upload.html"
+    )
+    
+@app.get(
+    "/api/upload-info/{upload_id}"
+)
+def upload_info(
+    upload_id: str
+):
+
+    with open(
+        UPLOAD_LINK_CONF,
+        "r",
+        encoding="utf-8"
+    ) as f:
+
+        links = json.load(f)
+
+    if upload_id not in links:
+
+        return {
+            "success": False
+        }
+
+    return {
+
+        "success": True,
+
+        "folder":
+            links[upload_id]["folder"],
+
+        "expire":
+            links[upload_id]["expire"],
+
+        "has_password":
+            bool(
+                links[upload_id][
+                    "password"
+                ]
+            )
+
+    }
+    
+@app.post(
+    "/api/guest-upload"
+)
+async def guest_upload(
+    upload_id: str = Form(...),
+    password: str = Form(""),
+    file: UploadFile = File(...)
+):
+
+    with open(
+        UPLOAD_LINK_CONF,
+        "r",
+        encoding="utf-8"
+    ) as f:
+
+        links = json.load(f)
+
+    if upload_id not in links:
+
+        return {
+            "success": False
+        }
+
+    item = links[upload_id]
+
+    if item["password"]:
+
+        if item["password"] != hash_password(password):
+
+            return {
+
+                "success": False,
+
+                "message":
+                    "密码错误"
+
+            }
+
+    target_dir = os.path.join(
+        UPLOAD_DIR,
+        item["folder"]
+    )
+
+    os.makedirs(
+        target_dir,
+        exist_ok=True
+    )
+
+    save_path = os.path.join(
+        target_dir,
+        file.filename
+    )
+
+    with open(
+        save_path,
+        "wb"
+    ) as buffer:
+
+        shutil.copyfileobj(
+            file.file,
+            buffer
+        )
+
+    item["upload_count"] += 1
+
+    with open(
+        UPLOAD_LINK_CONF,
+        "w",
+        encoding="utf-8"
+    ) as f:
+
+        json.dump(
+            links,
+            f,
+            indent=4,
+            ensure_ascii=False
+        )
+
+    return {
+
+        "success": True
+
+    }

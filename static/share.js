@@ -143,6 +143,8 @@ let imageFiles = [];
 
 function renderFolder(data) {
 
+    imageFiles = [];
+
     document.querySelector(
         ".share-card"
     ).innerHTML = `

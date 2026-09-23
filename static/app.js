@@ -1,3 +1,5 @@
+let currentFolder = ".";
+
 document.addEventListener("DOMContentLoaded", function () {
     const loginBtn = document.getElementById("loginBtn");
     const uploadBtn = document.getElementById("uploadBtn");
@@ -70,7 +72,7 @@ async function login() {
         );
 
         initPermission();
-        loadFolders();
+        // loadFolders();
         loadFiles();
     } else {
         alert("密码错误");
@@ -269,10 +271,7 @@ async function uploadFile() {
     }
 
     const fd = new FormData();
-    fd.append(
-        "folder",
-        document.getElementById("folderSelect").value
-    );
+    fd.append("folder", currentFolder === "." ? "" : currentFolder);
 
     const response = await fetch("/api/upload", {
         method: "POST",
@@ -295,6 +294,7 @@ async function loadFiles() {
     const fileList = document.getElementById("fileList");
 
     fileList.innerHTML = "";
+    imageFiles = [];
 
     Object.keys(data).forEach(folder => {
         // 根目录直接显示文件
@@ -340,11 +340,16 @@ async function loadFiles() {
             <div
                 class="folder-title"
                 data-folder="${folderId}"
-                onclick="toggleFolder('${folderId}')">
-                ▸ 📁 ${folder}
+                onclick="toggleFolder('${folderId}','${folderShare}')">
+                ▸ 📁 ${folderShare}
                 <div class="folder-actions">
                     ${hasPermission("share") ?
                 `
+                    <button
+                        class="btn-action"
+                        onclick="createUploadLink('${folder}')">
+                        上传
+                    </button>
                     <button
                         class="btn-action"
                         onclick="shareFile('${folderShare}','folder')">
@@ -384,7 +389,7 @@ async function loadFiles() {
                     .pop()
                     .toLowerCase();
 
-            if (["jpg","jpeg","png","gif","webp","bmp"].includes(ext)) {
+            if (["jpg", "jpeg", "png", "gif", "webp", "bmp"].includes(ext)) {
                 imageFiles.push({
                     path: file.path,
                     name: file.name
@@ -430,7 +435,49 @@ async function loadFiles() {
     });
 }
 
-function toggleFolder(folderId) {
+// function toggleFolder(folderId) {
+
+//     const content =
+//         document.getElementById(
+//             "folder-" + folderId
+//         );
+
+//     const title =
+//         document.querySelector(
+//             '[data-folder="' +
+//             folderId +
+//             '"]'
+//         );
+
+//     if (content.style.display === "none") {
+//         content.style.display = "block";
+//         title.innerHTML =
+//             title.innerHTML.replace(
+//                 "▸",
+//                 "▾"
+//             );
+//     } else {
+//         content.style.display = "none";
+//         title.innerHTML =
+//             title.innerHTML.replace(
+//                 "▾",
+//                 "▸"
+//             );
+//     }
+// }
+
+function toggleFolder(folderId, folderPath) {
+
+    currentFolder = folderPath;
+
+    const label =
+        document.getElementById(
+            "folderSelect"
+        );
+
+    if (label) {
+        label.innerText =folderPath;
+    }
 
     const content =
         document.getElementById(
@@ -444,21 +491,44 @@ function toggleFolder(folderId) {
             '"]'
         );
 
+    document
+        .querySelectorAll(
+            ".folder-title"
+        )
+        .forEach(item =>
+            item.classList.remove(
+                "folder-selected"
+            )
+        );
+
+    title.classList.add(
+        "folder-selected"
+    );
+
     if (content.style.display === "none") {
-        content.style.display = "block";
+
+        content.style.display =
+            "block";
+
         title.innerHTML =
             title.innerHTML.replace(
                 "▸",
                 "▾"
             );
+
     } else {
-        content.style.display = "none";
+
+        content.style.display =
+            "none";
+
         title.innerHTML =
             title.innerHTML.replace(
                 "▾",
                 "▸"
             );
+
     }
+
 }
 
 async function deleteFile(name) {
@@ -519,21 +589,21 @@ function toggleDarkMode() {
 
 }
 
-async function loadFolders() {
+// async function loadFolders() {
 
-    const response = await fetch("/api/folders");
-    const folders = await response.json();
-    const select = document.getElementById("folderSelect");
+//     const response = await fetch("/api/folders");
+//     const folders = await response.json();
+//     const select = document.getElementById("folderSelect");
 
-    select.innerHTML = '<option value="">.</option>';
+//     select.innerHTML = '<option value="">.</option>';
 
-    folders.forEach(folder => {
-        select.innerHTML +=
-            `<option value="${folder}">
-                ${folder}
-            </option>`;
-    });
-}
+//     folders.forEach(folder => {
+//         select.innerHTML +=
+//             `<option value="${folder}">
+//                 ${folder}
+//             </option>`;
+//     });
+// }
 
 async function createFolder() {
 
@@ -554,7 +624,9 @@ async function createFolder() {
 
     formData.append(
         "folder_name",
-        folderName
+        currentFolder === "."
+            ? folderName
+            : currentFolder + "/" + folderName
     );
 
     const response =
@@ -577,7 +649,7 @@ async function createFolder() {
             "folderName"
         ).value = "";
 
-        loadFolders();
+        // loadFolders();
         loadFiles();
 
     } else {
@@ -652,14 +724,27 @@ async function createShareLink() {
             shareUrl
         );
 
-        alert(
-            "共享链接已复制\n\n" +
-            shareUrl +
-            "\n\n有效期至：\n" +
-            result.expire +
-            "\n\n密码：" +
-            password
-        );
+        const passvalue = password == "" ? "无密码" : password;
+
+        if(result.duplicate){
+            alert(
+                "该文件已存在有效共享链接\n\n" +
+                shareUrl +
+                "\n\n有效期至：" +
+                result.expire +
+                "\n\n密码：" +
+                passvalue
+            );
+        }else{
+            alert(
+                "共享链接已复制\n\n" +
+                shareUrl +
+                "\n\n有效期至：" +
+                result.expire +
+                "\n\n密码：" +
+                passvalue
+            );
+        }
 
 
         bootstrap.Modal
@@ -789,25 +874,26 @@ async function loadShares() {
             </div>
 
             <div class="share-path">
-
                 ${share.type === "folder" ? "📁" : "📄"} ${share.path}
-
             </div>
 
-            <div class="share-meta">
+            <div class="share-meta-row">
+                <span class="share-meta">
+                    ⏰ 到期时间：
+                    ${share.expire}
+                </span>
 
-                ⏰ 到期时间：
-                ${share.expire}
+                <span class="share-meta">
+                    👀 浏览次数：
+                    ${share.view_count || 0}
+                </span>
 
-            </div>
-
-            <div class="share-meta">
-
-                🔒 ${share.password
-                ? "已设置密码"
-                : "无需密码"
-            }
-
+                <span class="share-meta">
+                    🔒 ${share.password
+                    ? "已设置密码"
+                    : "无需密码"
+                }
+                </span>
             </div>
 
             <div class="share-actions">
@@ -882,7 +968,7 @@ async function deleteShare(id) {
     loadShares();
 }
 
-let currentFolder = "";
+// let currentFolder = "";
 
 async function showFolderPermission(folder) {
 
@@ -975,3 +1061,77 @@ async function saveFolderPermission() {
 
 }
 
+async function createUploadLink(
+    folder
+){
+
+    const days =
+        prompt(
+            "有效期(天)",
+            "7"
+        );
+
+    if(!days){
+
+        return;
+
+    }
+
+    const password =
+        prompt(
+            "访问密码(可空)",
+            ""
+        );
+
+    const fd =
+        new FormData();
+
+    fd.append(
+        "folder",
+        folder
+    );
+
+    fd.append(
+        "days",
+        days
+    );
+
+    fd.append(
+        "password",
+        password
+    );
+
+    const response =
+        await fetch(
+            "./api/create-upload-link",
+            {
+                method:"POST",
+                body:fd
+            }
+        );
+
+    const result =
+        await response.json();
+
+    const uploadUrl =
+
+        window.location.origin +
+
+        "/upload/" +
+
+        result.upload_id;
+
+    navigator.clipboard
+        .writeText(
+            uploadUrl
+        );
+
+    alert(
+
+        "上传链接已复制\\n\\n" +
+
+        uploadUrl
+
+    );
+
+}
