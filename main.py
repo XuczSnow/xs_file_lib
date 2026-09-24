@@ -329,19 +329,31 @@ def get_files(username: str):
         # else:
         #     rel_dir_name = rel_dir
 
-        result[rel_dir] = []
+        result[rel_dir] = {}
+        
+        folder_size = 0
+        file_count = 0
+        folder_count = len(dirs)
+        result[rel_dir]["files"] = []
 
         for file in files:
-            result[rel_dir].append({
+            full_path = os.path.join(root, file)
+            folder_size += os.path.getsize(full_path)
+            file_count += 1
+            result[rel_dir]["files"].append({
                 "name": file,
-                "path": os.path.join(
-                    rel_dir,
-                    file
-                ).replace("\\", "/"),
-                "size": os.path.getsize(
-                    os.path.join(root, file)
-                )
+                "path": os.path.join(rel_dir, file).replace("\\", "/"),
+                "size": os.path.getsize(full_path),
+                "modified": datetime.fromtimestamp(os.path.getmtime(full_path))
+                                    .strftime("%Y-%m-%d %H:%M"),
+                "extension": os.path.splitext(file)[1][1:].lower()
             })
+            
+        result[rel_dir]["_meta"] = {
+            "file_count": file_count,
+            "folder_count": folder_count,
+            "size": folder_size
+            }
 
     return result
 
@@ -517,7 +529,10 @@ def share_content(share_id: str):
     share = shares[share_id]
 
     if share["type"] == "file":
-        files.append({"name": os.path.basename(share["path"])})
+        files.append({
+            "name": os.path.basename(share["path"]),
+            "size": os.path.getsize(share["path"])
+            })
         return {
             "success": True,
             "type":"file",
@@ -537,7 +552,10 @@ def share_content(share_id: str):
         if os.path.isfile(
             os.path.join(folder_path,file)):
 
-            files.append({"name": file})
+            files.append({
+                "name": file,
+                "size": os.path.getsize(os.path.join(folder_path,file))
+                })
 
     return {
         "success": True,

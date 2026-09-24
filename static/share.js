@@ -141,6 +141,19 @@ async function verifyShare() {
 
 let imageFiles = [];
 
+function formatSize(bytes) {
+    if (bytes < 1024)
+        return bytes + " B";
+
+    if (bytes < 1024 * 1024)
+        return (bytes / 1024).toFixed(1) + " KB";
+
+    if (bytes < 1024 * 1024 * 1024)
+        return (bytes / 1024 / 1024).toFixed(1) + " MB";
+
+    return (bytes / 1024 / 1024 / 1024).toFixed(1) + " GB";
+}
+
 function renderFolder(data) {
 
     imageFiles = [];
@@ -149,7 +162,7 @@ function renderFolder(data) {
         ".share-card"
     ).innerHTML = `
         <div class="folder-header">
-            <h4>📁 ${data.name}</h4>
+            <h4>${data.name}</h4>
         </div>
 
         <div class="folder-download">
@@ -202,11 +215,15 @@ function renderFolder(data) {
                 border-bottom:1px solid #e5e7eb;
             ">
 
-            <span class="share-file-name" onclick="previewFile('${full_path}', imageFiles)">
-
+            <div class="share-file-name" onclick="previewFile('${full_path}', imageFiles)">
                 📄 ${file.name}
+            </div>
 
-            </span>
+            <div class="share-file-tags">
+                <div class="share-file-tag">
+                    ${formatSize(file.size)}
+                </div>
+            </div>
 
             <a href="/api/share-folder-download/${data.share_id}/${file.name}" class="btn btn-primary btn-sm">
 

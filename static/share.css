@@ -64,6 +64,25 @@ body {
     color: #2563eb;
 }
 
+.share-file-tags {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-right: 20px;
+}
+
+.share-file-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: #f1f5f9;
+    color: #64748b;
+    border: 1px solid #d1d5db;
+    font-size: 14px;
+    white-space: nowrap;
+}
+
 
 .folder-header {
 

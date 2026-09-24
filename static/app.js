@@ -287,6 +287,19 @@ async function uploadFile() {
 
 let imageFiles = [];
 
+function formatSize(bytes) {
+    if (bytes < 1024)
+        return bytes + " B";
+
+    if (bytes < 1024 * 1024)
+        return (bytes / 1024).toFixed(1) + " KB";
+
+    if (bytes < 1024 * 1024 * 1024)
+        return (bytes / 1024 / 1024).toFixed(1) + " MB";
+
+    return (bytes / 1024 / 1024 / 1024).toFixed(1) + " GB";
+}
+
 async function loadFiles() {
 
     const response = await fetch(`/api/files?username=${localStorage.getItem("username")}`);
@@ -296,42 +309,34 @@ async function loadFiles() {
     fileList.innerHTML = "";
     imageFiles = [];
 
-    Object.keys(data).forEach(folder => {
-        // 根目录直接显示文件
-        // if (folder === ".") {
-        //     data[folder].forEach(file => {
-        //         fileList.innerHTML += `
-        //         <div class="folder-title">
-        //         📁 ...
-        //         </div>
-        //         <div id="folder-root" class="folder-content">
-        //             <div class="file-item">
-        //                 <div class="file-name">
-        //                     📄 ${file.name}
-        //                 </div>
-        //                 <div class="file-actions">
-        //                     <a href="/api/download/${encodeURIComponent(file.path)}"
-        //                     target="_blank"
-        //                     class="btn-action">
-        //                         下载
-        //                     </a>
-        //                     <button
-        //                         onclick="deleteFile('${file.path}')"
-        //                         class="btn-action danger">
-        //                         删除
-        //                     </button>
-        //                 </div>
-        //             </div>
-        //         </div>
-        //         `;
-        //     });
-        //     return;
-        // }
+    const folders = Object.keys(data)
+        .sort((a, b) => {
 
+            const zhA =
+                /[\u4e00-\u9fa5]/.test(a);
+
+            const zhB =
+                /[\u4e00-\u9fa5]/.test(b);
+
+            if (zhA !== zhB) {
+
+                return zhA ? 1 : -1;
+
+            }
+
+            return a.localeCompare(
+                b,
+                "zh-CN"
+            );
+
+        });
+
+    folders.forEach(folder => {
         // 普通文件夹
         const folderDiv = document.createElement("div");
         const folderId = folder.replaceAll("/", "_").replaceAll("\\", "_");
         const folderShare = folder.replaceAll("\\", "/");
+        const meta = data[folder]._meta;
 
         folderDiv.className =
             "folder-card";
@@ -341,7 +346,17 @@ async function loadFiles() {
                 class="folder-title"
                 data-folder="${folderId}"
                 onclick="toggleFolder('${folderId}','${folderShare}')">
-                ▸ 📁 ${folderShare}
+                <div class="folder-name">
+                    ▸ 📁 ${folderShare}
+                </div>
+                <div class="folder-meta">
+                    <span class="folder-tag">
+                        📄 ${meta.file_count}
+                    </span>
+                    <span class="folder-tag">
+                        ${formatSize(meta.size)}
+                    </span>
+                </div>
                 <div class="folder-actions">
                     ${hasPermission("share") ?
                 `
@@ -382,7 +397,7 @@ async function loadFiles() {
                 ".folder-content"
             );
 
-        data[folder].forEach(file => {
+        data[folder]["files"].forEach(file => {
             const ext =
                 file.name
                     .split(".")
@@ -398,10 +413,21 @@ async function loadFiles() {
 
             content.innerHTML += `
             <div class="file-item">
-                <span class="file-name" onclick="previewFile('${file.path}', imageFiles)">
+                <div class="file-name" onclick="previewFile('${file.path}', imageFiles)">
                     ├─ 📄 ${file.name}
-                </span>
-                <span class="file-actions">
+                </div>
+                <div class="file-meta">
+                    <span class="meta-size">
+                        ${formatSize(file.size)}
+                    </span>
+                    <span class="meta-type">
+                        ${file.extension}
+                    </span>
+                    <span class="meta-date">
+                        ${file.modified}
+                    </span>
+                </div>
+                <div class="file-actions">
                     ${hasPermission("download") ?
                     `
                     <a href="/api/download/${encodeURIComponent(file.path)}"
@@ -428,7 +454,7 @@ async function loadFiles() {
                             删除
                         </button>
                     ` : ""}
-                </span>
+                </div>
             </div>
         `;
         });
@@ -476,7 +502,7 @@ function toggleFolder(folderId, folderPath) {
         );
 
     if (label) {
-        label.innerText =folderPath;
+        label.innerText = folderPath;
     }
 
     const content =
@@ -574,18 +600,31 @@ function searchFiles() {
 
 function toggleDarkMode() {
 
-    document.body.classList.toggle(
-        "dark"
-    );
+    const isDark =
+        document.body.classList.toggle(
+            "dark"
+        );
 
     localStorage.setItem(
         "theme",
-        document.body.classList.contains(
-            "dark"
-        )
+        isDark
             ? "dark"
             : "light"
     );
+
+    const btn =
+        document.getElementById(
+            "darkModeBtn"
+        );
+
+    if(btn){
+
+        btn.innerHTML =
+            isDark
+                ? "☀️ 浅色模式"
+                : "🌙 深色模式";
+
+    }
 
 }
 
@@ -726,7 +765,7 @@ async function createShareLink() {
 
         const passvalue = password == "" ? "无密码" : password;
 
-        if(result.duplicate){
+        if (result.duplicate) {
             alert(
                 "该文件已存在有效共享链接\n\n" +
                 shareUrl +
@@ -735,7 +774,7 @@ async function createShareLink() {
                 "\n\n密码：" +
                 passvalue
             );
-        }else{
+        } else {
             alert(
                 "共享链接已复制\n\n" +
                 shareUrl +
@@ -890,9 +929,9 @@ async function loadShares() {
 
                 <span class="share-meta">
                     🔒 ${share.password
-                    ? "已设置密码"
-                    : "无需密码"
-                }
+                ? "已设置密码"
+                : "无需密码"
+            }
                 </span>
             </div>
 
@@ -1063,7 +1102,7 @@ async function saveFolderPermission() {
 
 async function createUploadLink(
     folder
-){
+) {
 
     const days =
         prompt(
@@ -1071,7 +1110,7 @@ async function createUploadLink(
             "7"
         );
 
-    if(!days){
+    if (!days) {
 
         return;
 
@@ -1105,8 +1144,8 @@ async function createUploadLink(
         await fetch(
             "./api/create-upload-link",
             {
-                method:"POST",
-                body:fd
+                method: "POST",
+                body: fd
             }
         );
 
