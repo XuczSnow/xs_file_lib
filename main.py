@@ -466,20 +466,6 @@ def create_share(
     except:
         shares = {}
 
-    shares[share_id] = {
-        "path": filepath,
-        "type": share_type,
-        "view_count": 0,
-        "expire":
-            expire_time.strftime(
-                "%Y-%m-%d %H:%M:%S"
-            ),
-        "password":
-            hash_password(password)
-            if password
-            else ""
-        }
-    
     for sid, share in shares.items():
         if share["path"] == filepath:
 
@@ -495,6 +481,20 @@ def create_share(
                     "expire": share["expire"],
                     "duplicate": True
                 }
+
+    shares[share_id] = {
+        "path": filepath,
+        "type": share_type,
+        "view_count": 0,
+        "expire":
+            expire_time.strftime(
+                "%Y-%m-%d %H:%M:%S"
+            ),
+        "password":
+            hash_password(password)
+            if password
+            else ""
+        }
 
     with open(SHARE_CONF,"w",encoding="utf-8") as f:
         json.dump(shares,f,indent=4,ensure_ascii=False)
