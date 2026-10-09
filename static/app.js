@@ -88,19 +88,16 @@ function hasPermission(name) {
 }
 
 function initPermission() {
-    // const role = localStorage.getItem("role");
     const uploadArea = document.getElementById("uploadArea");
     const userManageBtn = document.getElementById("userManageBtn");
     const viewSwitchBtn = document.getElementById("viewSwitchBtn");
 
-    // if (role === "viewer") {
     if (!hasPermission("upload")) {
         if (uploadArea) {
             uploadArea.style.display = "none";
         }
     }
 
-    // if (role !== "admin") {
     if (!hasPermission("user_manage"))
         if (userManageBtn) {
             userManageBtn.style.display = "none";
@@ -110,26 +107,66 @@ function initPermission() {
         if (viewSwitchBtn) {
             viewSwitchBtn.style.display = "none";
         }
+}
 
-    // }
+function showFilePage() {
 
+    const filePage = document.getElementById("filePage");
+    const sharePage = document.getElementById("shareManagerPage");
+    const userPage = document.getElementById("userManagerPage");
+    const setPage = document.getElementById("settingManagerPage");
+
+    filePage.style.display = "block";
+    sharePage.style.display = "none";
+    userPage.style.display = "none";
+    setPage.style.display = "none";
+
+    loadFiles();
+}
+
+function showShareManager() {
+
+    const filePage = document.getElementById("filePage");
+    const sharePage = document.getElementById("shareManagerPage");
+    const userPage = document.getElementById("userManagerPage");
+    const setPage = document.getElementById("settingManagerPage");
+
+    filePage.style.display = "none";
+    sharePage.style.display = "block";
+    userPage.style.display = "none";
+    setPage.style.display = "none";
+
+    loadShares();
 }
 
 function showUserManager() {
-    const page =
-        document.getElementById(
-            "userManagerPage"
-        );
 
-    if (
-        page.style.display === "none" ||
-        page.style.display === ""
-    ) {
-        page.style.display = "block";
-        loadUsers();
-    } else {
-        page.style.display = "none";
-    }
+    const filePage = document.getElementById("filePage");
+    const sharePage = document.getElementById("shareManagerPage");
+    const userPage = document.getElementById("userManagerPage");
+    const setPage = document.getElementById("settingManagerPage");
+
+    filePage.style.display = "none";
+    sharePage.style.display = "none";
+    userPage.style.display = "block";
+    setPage.style.display = "none";
+
+    loadUsers();
+}
+
+function showSetManager(){
+
+    const filePage = document.getElementById("filePage");
+    const sharePage = document.getElementById("shareManagerPage");
+    const userPage = document.getElementById("userManagerPage");
+    const setPage = document.getElementById("settingManagerPage");
+
+    filePage.style.display = "none";
+    sharePage.style.display = "none";
+    userPage.style.display = "none";
+    setPage.style.display = "block";
+
+
 }
 
 async function loadUsers() {
@@ -617,7 +654,7 @@ function toggleDarkMode() {
             "darkModeBtn"
         );
 
-    if(btn){
+    if (btn) {
 
         btn.innerHTML =
             isDark
@@ -797,58 +834,58 @@ async function createShareLink() {
     }
 }
 
-let currentView = "file";
+// let currentView = "file";
 
-function toggleShareView() {
+// function toggleShareView() {
 
-    const filePage =
-        document.getElementById(
-            "filePage"
-        );
+//     const filePage =
+//         document.getElementById(
+//             "filePage"
+//         );
 
-    const sharePage =
-        document.getElementById(
-            "shareManagerPage"
-        );
+//     const sharePage =
+//         document.getElementById(
+//             "shareManagerPage"
+//         );
 
-    const btn =
-        document.getElementById(
-            "viewSwitchBtn"
-        );
+//     const btn =
+//         document.getElementById(
+//             "viewSwitchBtn"
+//         );
 
-    if (currentView === "file") {
+//     if (currentView === "file") {
 
-        filePage.style.display =
-            "none";
+//         filePage.style.display =
+//             "none";
 
-        sharePage.style.display =
-            "block";
+//         sharePage.style.display =
+//             "block";
 
-        btn.innerHTML =
-            "📁 返回文件";
+//         btn.innerHTML =
+//             "📁 返回文件";
 
-        currentView =
-            "share";
+//         currentView =
+//             "share";
 
-        loadShares();
+//         loadShares();
 
-    } else {
+//     } else {
 
-        sharePage.style.display =
-            "none";
+//         sharePage.style.display =
+//             "none";
 
-        filePage.style.display =
-            "block";
+//         filePage.style.display =
+//             "block";
 
-        btn.innerHTML =
-            "🔗 共享管理";
+//         btn.innerHTML =
+//             "🔗 共享管理";
 
-        currentView =
-            "file";
+//         currentView =
+//             "file";
 
-    }
+//     }
 
-}
+// }
 
 async function loadShares() {
 

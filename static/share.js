@@ -131,7 +131,7 @@ async function verifyShare() {
         // }
         // else {
 
-            renderFolder(data);
+        renderFolder(data);
 
         // }
 
@@ -181,13 +181,12 @@ function renderFolder(data) {
         document.getElementById(
             "folderFiles"
         );
-    
+
     data.files.forEach(file => {
         let full_path = ""
         if (data.type === "file")
             full_path = data.path;
-        else
-        {
+        else {
             full_path = data.name + "/" + file.name;
 
             const ext =
@@ -196,7 +195,7 @@ function renderFolder(data) {
                     .pop()
                     .toLowerCase();
 
-            if (["jpg","jpeg","png","gif","webp","bmp"].includes(ext)) {
+            if (["jpg", "jpeg", "png", "gif", "webp", "bmp"].includes(ext)) {
                 imageFiles.push({
                     path: full_path,
                     name: file.name
@@ -226,9 +225,7 @@ function renderFolder(data) {
             </div>
 
             <a href="/api/share-folder-download/${data.share_id}/${file.name}" class="btn btn-primary btn-sm">
-
                 下载
-
             </a>
 
         </div>
@@ -239,7 +236,7 @@ function renderFolder(data) {
 
 }
 
-function downloadFolderZip(shareId){
+function downloadFolderZip(shareId) {
 
     const modal =
         new bootstrap.Modal(
@@ -254,40 +251,39 @@ function downloadFolderZip(shareId){
         "/api/share-folder-zip/" +
         shareId
     )
-    .then(res => res.blob())
-    .then(blob => {
+        .then(res => res.blob())
+        .then(blob => {
 
-        const url =
-            window.URL.createObjectURL(
-                blob
+            const url =
+                window.URL.createObjectURL(
+                    blob
+                );
+
+            const a =
+                document.createElement(
+                    "a"
+                );
+
+            a.href = url;
+
+            a.download = "folder.zip";
+
+            a.click();
+
+            window.URL.revokeObjectURL(
+                url
             );
 
-        const a =
-            document.createElement(
-                "a"
+            modal.hide();
+
+        })
+        .catch(() => {
+
+            modal.hide();
+
+            alert(
+                "打包失败"
             );
 
-        a.href = url;
-
-        a.download = "folder.zip";
-
-        a.click();
-
-        window.URL.revokeObjectURL(
-            url
-        );
-
-        modal.hide();
-
-    })
-    .catch(() => {
-
-        modal.hide();
-
-        alert(
-            "打包失败"
-        );
-
-    });
-
+        });
 }

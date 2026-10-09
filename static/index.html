@@ -37,91 +37,26 @@
             <hr>
             <div class="user-panel">
                 <div>
-                    🧍 用户：
+                    当前用户：
                     <span id="currentUser">
                         未登录
                     </span>
                 </div>
-                <!-- <div>
-                    🔑 角色：
-                    <span id="currentRole">
-                        -
-                    </span>
-                </div> -->
             </div>
             <hr>
-            <button id="viewSwitchBtn" class="btn btn-secondary w-100 mt-2" onclick="toggleShareView()">
+            <button id="viewFileBtn" class="btn btn-secondary w-100 mt-2" onclick="showFilePage()">
+                📁 文件管理
+            </button>
+            <button id="viewSwitchBtn" class="btn btn-secondary w-100 mt-2" onclick="showShareManager()">
                 🔗 共享管理
             </button>
             <button id="userManageBtn" class="btn btn-secondary w-100 mt-2" onclick="showUserManager()">
                 🧑‍🤝‍🧑 用户管理
             </button>
-
+            <button id="settingManageBtn" class="btn btn-secondary w-100 mt-2" onclick="showSetManager()">
+                ⚙️ 系统设置
+            </button>
             <hr>
-            <div id="userManagerPage" style="display:none;">
-                <h3>用户管理</h3>
-                <div class="card p-3">
-                    <h5>新增用户</h5>
-                    <input id="newUsername" class="form-control mb-2" placeholder="用户名">
-                    <input id="newPassword" type="password" class="form-control mb-2" placeholder="密码">
-                    <!-- <select id="newRole" class="form-select mb-2">
-                        <option value="viewer">
-                            viewer
-                        </option>
-                        <option value="user">
-                            user
-                        </option>
-                        <option value="admin">
-                            admin
-                        </option>
-                    </select> -->
-                    <h5>权限设置</h5>
-
-                    <div class="permission-list">
-                        <label>
-                            <input type="checkbox" value="upload">
-                            上传文件
-                        </label>
-                        <label>
-                            <input type="checkbox" value="download">
-                            下载文件
-                        </label>
-                        <label>
-                            <input type="checkbox" value="delete">
-                            删除文件
-                        </label>
-                        <label>
-                            <input type="checkbox" value="share">
-                            文件共享
-                        </label>
-                        <label>
-                            <input type="checkbox" value="share_manage">
-                            共享管理
-                        </label>
-                        <label>
-                            <input type="checkbox" value="user_manage">
-                            用户管理
-                        </label>
-                    </div>
-                    <button class="btn btn-success" onclick="addUser()">
-                        新增用户
-                    </button>
-
-                </div>
-                <hr>
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>用户名</th>
-                            <!-- <th>角色</th> -->
-                            <th>操作</th>
-                        </tr>
-                    </thead>
-                    <tbody id="userTable">
-                    </tbody>
-                </table>
-                <hr>
-            </div>
         </div>
         <div class="content">
             <div id="filePage">
@@ -164,6 +99,63 @@
                     </span>
                 </div>
                 <div id="shareList"></div>
+            </div>
+            <div id="userManagerPage" style="display:none;">
+                <h3>🧑‍🤝‍🧑 用户管理</h3>
+                <div class="card p-3">
+                    <h5>新增用户</h5>
+                    <input id="newUsername" class="form-control mb-2" placeholder="用户名">
+                    <input id="newPassword" type="password" class="form-control mb-2" placeholder="密码">
+                    <h5>权限设置</h5>
+
+                    <div class="permission-list">
+                        <label>
+                            <input type="checkbox" value="upload">
+                            上传文件
+                        </label>
+                        <label>
+                            <input type="checkbox" value="download">
+                            下载文件
+                        </label>
+                        <label>
+                            <input type="checkbox" value="delete">
+                            删除文件
+                        </label>
+                        <label>
+                            <input type="checkbox" value="share">
+                            文件共享
+                        </label>
+                        <label>
+                            <input type="checkbox" value="share_manage">
+                            共享管理
+                        </label>
+                        <label>
+                            <input type="checkbox" value="user_manage">
+                            用户管理
+                        </label>
+                    </div>
+                    <button class="btn btn-success" onclick="addUser()">
+                        新增用户
+                    </button>
+                </div>
+                <div class="card p-3">
+                    <h5>删除用户</h5>
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th>用户名</th>
+                                <!-- <th>角色</th> -->
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="userTable">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="settingManagerPage" style="display:none;">
+                <h3>⚙️ 系统设置</h3>
             </div>
         </div>
     </div>
@@ -218,6 +210,30 @@
                 </div>
             </div>
         </div>
+    </div>
+
+    <div class="mobile-nav">
+
+        <button onclick="showFilePage()">
+            📁
+            <span>文件</span>
+        </button>
+
+        <button onclick="showShareManager()">
+            🔗
+            <span>共享</span>
+        </button>
+
+        <button onclick="showUserManager()">
+            👥
+            <span>用户</span>
+        </button>
+
+        <button onclick="showSetManager()">
+            ⚙️
+            <span>配置</span>
+        </button>
+
     </div>
 
     <div class="modal fade" id="previewModal">

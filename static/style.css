@@ -53,6 +53,7 @@ body {
 .user-panel div {
     margin: 6px 0;
     font-size: 18px;
+    text-align: center;
 }
 
 .sidebar button {
@@ -223,9 +224,7 @@ body {
     display: grid;
     color: #6b7280;
     grid-template-columns:
-        90px
-        70px
-        170px;
+        90px 70px 170px;
     justify-content: end;
     align-items: center;
     text-align: right;
@@ -390,13 +389,6 @@ body {
 /* 用户管理页面 - 浅色模式 */
 /* ===================== */
 
-/* #userManagerPage {
-    background: #f8fafc;
-    padding: 15px;
-    border-radius: 12px;
-    margin-top: 15px;
-} */
-
 /* 新增用户区域 */
 #userManagerPage .card {
     background: #ffffff;
@@ -404,6 +396,7 @@ body {
     box-shadow:
         0 2px 8px rgba(0, 0, 0, 0.08);
     border-radius: 6px;
+    margin-top: 10px;
 }
 
 /* 表格 */
@@ -430,23 +423,11 @@ body {
     border-radius: 8px;
 }
 
-/* 下拉框 */
-#userManagerPage select {
-    border: 1px solid #d1d5db;
-    border-radius: 8px;
-}
-
-/* 标题 */
-#userManagerPage h3 {
-    margin-bottom: 20px;
-    color: #d1e4ff;
-    font-weight: 600;
-}
-
 /* 新增用户按钮 */
 #userManagerPage .btn-success {
     background: #16a34a;
     border: none;
+    margin-top: 10px;
 }
 
 #userManagerPage .btn-success:hover {
@@ -590,6 +571,7 @@ body.dark .share-meta {
     background: #334155;
     color: #cbd5e1;
 }
+
 body.dark .share-count {
     background: #334155;
     color: #f8fafc;
@@ -663,4 +645,63 @@ body.dark .toolbar-card {
 
 body.dark .folder-label {
     color: #f8fafc;
+}
+
+body.dark .mobile-nav {
+    background: #1e293b;
+    border-top: 1px solid #334155;
+}
+
+body.dark .mobile-nav button {
+    color: #cbd5e1;
+}
+
+
+/* ===================== */
+/* Mobile */
+/* ===================== */
+
+.mobile-nav {
+    display: none;
+}
+
+@media (max-width:768px) {
+
+    .sidebar {
+        display: none;
+    }
+
+    .content {
+        margin-left: 0;
+        padding: 12px;
+        padding-bottom: 70px;
+    }
+
+    .mobile-nav {
+        display: flex;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 60px;
+        background: white;
+        border-top: 1px solid #e5e7eb;
+        z-index: 999;
+    }
+
+    .mobile-nav button {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        border: none;
+        background: transparent;
+        font-size: 18px;
+    }
+
+    .mobile-nav span {
+        font-size: 12px;
+    }
 }
