@@ -1,5 +1,7 @@
 let currentFolder = ".";
 
+loadSiteSetting()
+
 document.addEventListener("DOMContentLoaded", function () {
     const loginBtn = document.getElementById("loginBtn");
     const uploadBtn = document.getElementById("uploadBtn");
@@ -43,11 +45,6 @@ async function login() {
             result.username
         );
 
-        // localStorage.setItem(
-        //     "role",
-        //     result.role
-        // );
-
         document.getElementById(
             "login-page"
         ).style.display = "none";
@@ -61,15 +58,15 @@ async function login() {
         ).innerText =
             result.username;
 
-        // document.getElementById(
-        //     "currentRole"
-        // ).innerText =
-        //     result.role;
-
         localStorage.setItem(
             "permissions",
             JSON.stringify(result.permissions)
         );
+
+        document.getElementById(
+            "mobileUserName"
+        ).innerText =
+            result.username;
 
         initPermission();
         // loadFolders();
@@ -90,7 +87,11 @@ function hasPermission(name) {
 function initPermission() {
     const uploadArea = document.getElementById("uploadArea");
     const userManageBtn = document.getElementById("userManageBtn");
-    const viewSwitchBtn = document.getElementById("viewSwitchBtn");
+    const shareManageBtn = document.getElementById("shareManageBtn");
+    const settingManageBtn = document.getElementById("settingManageBtn");
+    const userMobileBtn = document.getElementById("mobileUserBtn");
+    const shareMobileBtn = document.getElementById("mobileShareBtn");
+    const settingMobileBtn = document.getElementById("mobileSettingBtn");
 
     if (!hasPermission("upload")) {
         if (uploadArea) {
@@ -98,15 +99,26 @@ function initPermission() {
         }
     }
 
-    if (!hasPermission("user_manage"))
-        if (userManageBtn) {
+    if (!hasPermission("user_manage")) {
+        if (userManageBtn)
             userManageBtn.style.display = "none";
-        }
+        if (userMobileBtn)
+            userMobileBtn.style.display = "none";
+    }
 
-    if (!hasPermission("share_manage"))
-        if (viewSwitchBtn) {
-            viewSwitchBtn.style.display = "none";
-        }
+    if (!hasPermission("share_manage")) {
+        if (shareManageBtn)
+            shareManageBtn.style.display = "none";
+        if (shareMobileBtn)
+            shareMobileBtn.style.display = "none";
+    }
+
+    if (!hasPermission("system_manage")) {
+        if (settingManageBtn)
+            settingManageBtn.style.display = "none";
+        if (settingMobileBtn)
+            settingMobileBtn.style.display = "none";
+    }
 }
 
 function showFilePage() {
@@ -154,7 +166,7 @@ function showUserManager() {
     loadUsers();
 }
 
-function showSetManager(){
+function showSetManager() {
 
     const filePage = document.getElementById("filePage");
     const sharePage = document.getElementById("shareManagerPage");
@@ -166,7 +178,7 @@ function showSetManager(){
     userPage.style.display = "none";
     setPage.style.display = "block";
 
-
+    loadSettings();
 }
 
 async function loadUsers() {
@@ -655,12 +667,23 @@ function toggleDarkMode() {
         );
 
     if (btn) {
-
         btn.innerHTML =
             isDark
                 ? "☀️ 浅色模式"
                 : "🌙 深色模式";
+    }
 
+    const mobileThemeBtn =
+
+        document.getElementById(
+            "mobileThemeBtn"
+        );
+
+    if (mobileThemeBtn) {
+        mobileThemeBtn.innerHTML =
+            isDark
+                ? "☀️"
+                : "🌙";
     }
 
 }
@@ -1209,5 +1232,90 @@ async function createUploadLink(
         uploadUrl
 
     );
+}
+
+async function loadSettings() {
+
+    const response =
+        await fetch(
+            "./api/settings"
+        );
+
+    const settings =
+        await response.json();
+
+    document
+        .getElementById(
+            "siteName"
+        )
+        .value =
+        settings.site_name;
+
+    document
+        .getElementById(
+            "rootPath"
+        )
+        .value =
+        settings.root_path;
+}
+
+async function saveSettings() {
+
+    const data = {
+        site_name:
+            document.getElementById("siteName").value,
+        root_path:
+            document.getElementById("rootPath").value
+    };
+
+    const response =
+
+        await fetch(
+            "./api/settings",
+            {
+                method: "POST",
+
+                headers: {
+                    "Content-Type":
+                        "application/json"
+                },
+
+                body:
+                    JSON.stringify(
+                        data
+                    )
+            }
+        );
+
+    const result =
+        await response.json();
+
+    if (result.success) {
+
+        alert(
+            "保存成功"
+        );
+
+    }
+
+}
+
+async function loadSiteSetting() {
+
+    const response =
+        await fetch(
+            "./api/settings"
+        );
+
+    const settings = await response.json();
+
+    document.getElementById("pageTitle")
+        .innerText = settings.site_name;
+    document.getElementById("siteTitle")
+        .innerText = settings.site_name;
+    document.getElementById("sideTitle")
+        .innerText = settings.site_name;
+    document.getElementById("mobileSiteTitle")
+        .innerText = "📁 " + settings.site_name;
 
 }

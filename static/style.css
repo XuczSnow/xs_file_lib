@@ -364,6 +364,7 @@ body {
 /* 信息 */
 .share-meta-row {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 10px;
     margin: 10px 0px;
@@ -656,6 +657,20 @@ body.dark .mobile-nav button {
     color: #cbd5e1;
 }
 
+body.dark .mobile-header {
+    background: #1e293b;
+    border-bottom: 1px solid #334155;
+}
+
+body.dark .mobile-user {
+    color: #94a3b8;
+}
+
+body.dark .mobile-theme-btn {
+    background: #334155;
+    color: white;
+}
+
 
 /* ===================== */
 /* Mobile */
@@ -665,16 +680,93 @@ body.dark .mobile-nav button {
     display: none;
 }
 
+.mobile-header {
+    display: none;
+}
+
 @media (max-width:768px) {
 
     .sidebar {
         display: none;
     }
 
+    .mobile-header {
+        display: block;
+        background: white;
+        padding: 12px 16px;
+        margin: -12px -12px 12px -12px;
+        border-bottom: 1px solid #e5e7eb;
+        position: sticky;
+        top: 0;
+        z-index: 100;
+    }
+
+    .mobile-header-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    #mobileSiteTitle {
+        font-size: 18px;
+        font-weight: 600;
+    }
+
+    .mobile-user {
+        text-align: center;
+        margin-top: 6px;
+        font-size: 14px;
+        color: #64748b;
+    }
+
+    .mobile-theme-btn {
+        width: 36px;
+        height: 36px;
+        border: none;
+        border-radius: 10px;
+        background: #f1f5f9;
+        cursor: pointer;
+    }
+
     .content {
         margin-left: 0;
         padding: 12px;
         padding-bottom: 70px;
+    }
+
+    .folder-title {
+        flex-wrap: wrap;
+    }
+
+    .folder-meta {
+        width: 100%;
+        flex-wrap: wrap;
+        margin-top: 8px;
+    }
+
+    .folder-actions {
+        width: 100%;
+        justify-content: flex-end;
+        margin-top: 8px;
+    }
+
+
+    .file-item {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .file-meta {
+        width: 100%;
+        margin-top: 6px;
+    }
+    
+    .file-actions {
+        margin-top: 8px;
+        width: 100%;
+        display: flex;
+        justify-content: flex-end;
+        flex-wrap: wrap;
     }
 
     .mobile-nav {
@@ -704,4 +796,5 @@ body.dark .mobile-nav button {
     .mobile-nav span {
         font-size: 12px;
     }
+    
 }

@@ -20,6 +20,7 @@ SHARE_CONF = "./config/shares.json"
 FPRMS_CONF = "./config/folder_permissions.json"
 ACCESS_LOG_CONF = "./config/share_access_log.json"
 UPLOAD_LINK_CONF = "./config/upload_links.json"
+SETTING_CONF = "./config/config.json"
 
 os.makedirs(
     UPLOAD_DIR,
@@ -136,6 +137,22 @@ def init_config():
             encoding="utf-8"
         ) as f:
             json.dump({},f)
+            
+    # 功能配置
+    if not os.path.exists(SETTING_CONF):
+        with open(SETTING_CONF,"w",encoding="utf-8") as f:
+            json.dump(
+                {
+                    "site_name":
+                        "XS File Library",
+
+                    "root_path":
+                        "uploads"
+                },
+                f,
+                indent=4,
+                ensure_ascii=False
+            )
 
 app.mount(
     "/static",
@@ -151,6 +168,34 @@ def home():
         "static/index.html"
     )
 
+def load_config():
+    with open(SETTING_CONF,"r",encoding="utf-8") as f:
+        return json.load(f)
+    
+@app.get("/api/settings")
+def get_settings():
+    return load_config()
+    
+@app.post("/api/settings")
+async def save_settings(
+    request: Request
+):
+    global UPLOAD_DIR
+    data = await request.json()
+
+    with open(SETTING_CONF,"w",encoding="utf-8") as f:
+        json.dump(
+            data,
+            f,
+            indent=4,
+            ensure_ascii=False
+        )
+    
+    UPLOAD_DIR = load_config().get("root_path", "uploads")
+        
+    return {
+        "success": True
+    }
 
 @app.post("/api/login")
 def login(

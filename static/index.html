@@ -6,7 +6,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
-    <title>XS File Library</title>
+    <title id="pageTitle">XS File Library</title>
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="/static/style.css" rel="stylesheet">
@@ -15,8 +15,8 @@
 <body>
     <div id="login-page" class="login-container">
         <div class="card p-4 shadow">
-            <h3 class="mb-3">
-                File Library Pro
+            <h3 class="mb-3" id="siteTitle">
+                XS File Library
             </h3>
             <input type="text" id="username" class="form-control mb-2" placeholder="用户名">
 
@@ -28,8 +28,26 @@
     </div>
 
     <div id="main-page" style="display:none;">
+        <div id="mobileHeader" class="mobile-header">
+
+            <div class="mobile-header-top">
+                <div id="mobileSiteTitle">
+                    📁 XS File Library
+                </div>
+                <button id="mobileThemeBtn" class="mobile-theme-btn" onclick="toggleDarkMode()">
+                    🌙
+                </button>
+            </div>
+
+            <div class="mobile-user">
+                当前用户： <span id="mobileUserName">
+                    未登录
+                </span>
+            </div>
+
+        </div>
         <div class="sidebar">
-            <h4>📁 文件库</h4>
+            <h4>📁 <span id="sideTitle">XS File Library</span> </h4>
             <hr>
             <button id="darkModeBtn" class="btn btn-secondary w-100 mt-2" onclick="toggleDarkMode()">
                 🌙 深色模式
@@ -47,7 +65,7 @@
             <button id="viewFileBtn" class="btn btn-secondary w-100 mt-2" onclick="showFilePage()">
                 📁 文件管理
             </button>
-            <button id="viewSwitchBtn" class="btn btn-secondary w-100 mt-2" onclick="showShareManager()">
+            <button id="shareManageBtn" class="btn btn-secondary w-100 mt-2" onclick="showShareManager()">
                 🔗 共享管理
             </button>
             <button id="userManageBtn" class="btn btn-secondary w-100 mt-2" onclick="showUserManager()">
@@ -156,8 +174,47 @@
 
             <div id="settingManagerPage" style="display:none;">
                 <h3>⚙️ 系统设置</h3>
+                <div class="card p-3">
+                    <div class="mb-3">
+                        <label>系统名称</label>
+                        <input id="siteName" class="form-control">
+                    </div>
+
+                    <div class="mb-3">
+                        <label>文件根目录</label>
+                        <input id="rootPath" class="form-control">
+                    </div>
+                </div>
+                <hr>
+                <button class="btn btn-primary" onclick="saveSettings()">
+                    保存
+                </button>
             </div>
         </div>
+        <div id="mobileNav" class="mobile-nav">
+
+            <button id="mobileFileBtn" onclick="showFilePage()">
+                📁
+                <span>文件</span>
+            </button>
+
+            <button id="mobileShareBtn" onclick="showShareManager()">
+                🔗
+                <span>共享</span>
+            </button>
+
+            <button id="mobileUserBtn" onclick="showUserManager()">
+                👥
+                <span>用户</span>
+            </button>
+
+            <button id="mobileSettingBtn" onclick="showSetManager()">
+                ⚙️
+                <span>配置</span>
+            </button>
+
+        </div>
+
     </div>
 
     <div class="modal fade" id="shareModal" tabindex="-1">
@@ -210,30 +267,6 @@
                 </div>
             </div>
         </div>
-    </div>
-
-    <div class="mobile-nav">
-
-        <button onclick="showFilePage()">
-            📁
-            <span>文件</span>
-        </button>
-
-        <button onclick="showShareManager()">
-            🔗
-            <span>共享</span>
-        </button>
-
-        <button onclick="showUserManager()">
-            👥
-            <span>用户</span>
-        </button>
-
-        <button onclick="showSetManager()">
-            ⚙️
-            <span>配置</span>
-        </button>
-
     </div>
 
     <div class="modal fade" id="previewModal">
