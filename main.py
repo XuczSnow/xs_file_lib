@@ -3,6 +3,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from datetime import datetime, timedelta
+from PIL import Image
 
 import os
 import json
@@ -15,6 +16,7 @@ import tempfile
 app = FastAPI()
 
 UPLOAD_DIR = "./uploads"
+THUMB_DIR = "./.thumbs"
 USER_CONF = "./config/users.json"
 SHARE_CONF = "./config/shares.json"
 FPRMS_CONF = "./config/folder_permissions.json"
@@ -498,6 +500,7 @@ def create_folder(folder_name: str = Form(...)):
 def create_share(
     filepath: str = Form(...),
     share_type: str = Form(...),
+    share_mode: str = Form("normal"),
     days: int = Form(...),
     password: str = Form("")
 ):
@@ -530,6 +533,7 @@ def create_share(
     shares[share_id] = {
         "path": filepath,
         "type": share_type,
+        "share_mode": share_mode,
         "view_count": 0,
         "expire":
             expire_time.strftime(
@@ -605,6 +609,8 @@ def share_content(share_id: str):
     return {
         "success": True,
         "type": "folder",
+        "share_mode":
+            share.get("share_mode", "normal"),
         "share_id": share_id,
         "path": share["path"],
         "name": share["path"],
@@ -809,6 +815,9 @@ def share_info(
         
         "type":
             share.get("type","file"),
+
+        "share_mode":
+            share.get("share_mode", "normal"),
 
         "name": share["path"],
             # os.path.basename(share["path"]),
@@ -1137,3 +1146,151 @@ async def guest_upload(
         "success": True
 
     }
+
+from PIL import Image
+
+def create_thumbnail(source,target,short_side=600):
+
+    img = Image.open(source)
+    if img.mode in ("RGBA", "P"):
+        img = img.convert("RGB")
+
+    width, height = img.size
+    scale = short_side / min(width, height)
+
+    print(scale)
+
+    if scale < 1:
+        new_width = int(width * scale)
+        new_height = int(height * scale)
+    else:
+        new_width = width
+        new_height = height
+
+    img = img.resize(
+        (new_width, new_height),
+        Image.LANCZOS
+    )
+
+    img.save(
+        target,
+        format="JPEG",
+        quality=75,
+        optimize=True
+    )
+
+@app.get(
+    "/api/thumbnail/{filepath:path}"
+)
+def get_thumbnail(
+    filepath: str
+):
+
+    source = os.path.join(UPLOAD_DIR,filepath)
+
+    base_name = os.path.splitext(filepath)[0]
+    thumb_root = os.path.join(THUMB_DIR,".img_thumbs_600")
+    thumb_path = os.path.join(thumb_root, base_name + ".jpg")
+
+    os.makedirs(os.path.dirname(thumb_path),exist_ok=True)
+
+    if not os.path.exists(thumb_path):
+        create_thumbnail(source, thumb_path, 600)
+
+    return FileResponse(thumb_path)
+
+@app.get(
+    "/api/preview-image/{filepath:path}"
+)
+def get_preview_image(
+    filepath: str
+):
+
+    source = os.path.join(UPLOAD_DIR,filepath)
+
+    base_name = os.path.splitext(filepath)[0]
+    preview_root = os.path.join(THUMB_DIR,".img_thumbs_1200")
+    preview_path = os.path.join(preview_root, base_name + ".jpg")
+
+    os.makedirs(os.path.dirname(preview_path),exist_ok=True)
+
+    if not os.path.exists(preview_path):
+        create_thumbnail(source, preview_path, 1200)
+
+    return FileResponse(preview_path)
+
+@app.get(
+    "/share/video/{share_id}/{filename:path}"
+)
+def share_video_page(
+    share_id: str,
+    filename: str
+):
+    return FileResponse(
+        "static/share_video.html"
+    )
+
+@app.get(
+    "/api/share-video-info/{share_id}/{filename:path}"
+)
+def share_video_info(
+    share_id: str,
+    filename: str
+):
+
+    return {
+        "success": True,
+        "share_id": share_id,
+        "filename": filename,
+        "url":
+            f"/api/share-folder-download/{share_id}/{filename}"
+    }
+
+import subprocess
+import os
+
+def generate_video_thumbnail(
+    source_path,
+    thumb_path
+):
+
+    os.makedirs(
+        os.path.dirname(thumb_path),
+        exist_ok=True
+    )
+
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-y",
+            "-i",
+            source_path,
+            "-ss",
+            "00:00:01",
+            "-frames:v",
+            "1",
+            thumb_path
+        ],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL
+    )
+
+@app.get(
+    "/api/video-thumbnail/{filepath:path}"
+)
+def video_thumbnail(
+    filepath: str
+):
+
+    source = os.path.join(UPLOAD_DIR, filepath)
+    thumb_root = os.path.join(THUMB_DIR, ".video_thumbs")
+    thumb_file = os.path.join(thumb_root, filepath + ".jpg")
+
+    os.makedirs(
+        os.path.dirname(thumb_file),exist_ok=True
+    )
+
+    if not os.path.exists(thumb_file):
+        generate_video_thumbnail(source,thumb_file)
+
+    return FileResponse(thumb_file)

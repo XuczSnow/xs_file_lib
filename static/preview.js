@@ -107,28 +107,116 @@ function previewFile(path, imageFiles) {
     }
 }
 
+// function showCurrentImage() {
+//     const image = imageFiles[currentImageIndex];
+//     if (!image) return;
+
+//     const url = '/api/download/' + encodeURIComponent(image.path);
+//     const preview = document.getElementById('previewContent');
+
+//     preview.innerHTML = `
+//         <div class="text-center">
+//             <div class="mb-3">
+//                 <button class="btn btn-secondary" onclick="prevImage()">← 上一张</button>
+//                 <span class="mx-3">${currentImageIndex + 1} / ${imageFiles.length}</span>
+//                 <button class="btn btn-secondary" onclick="nextImage()">下一张 →</button>
+//             </div>
+//             <img src="${url}" class="img-fluid rounded">
+//             <div class="mt-3">${image.name}</div>
+//         </div>`;
+// }
+
 function showCurrentImage() {
-    const image = imageFiles[currentImageIndex];
+
+    const image =
+        imageFiles[currentImageIndex];
+
     if (!image) return;
 
-    const url = '/api/download/' + encodeURIComponent(image.path);
-    const preview = document.getElementById('previewContent');
+    // 缩略图预览
+    const previewUrl =
+        "/api/preview-image/" +
+        encodeURIComponent(image.path);
+
+    // 原图下载
+    const downloadUrl =
+        "/api/download/" +
+        encodeURIComponent(image.path);
+
+    const preview =
+        document.getElementById(
+            "previewContent"
+        );
 
     preview.innerHTML = `
-        <div class="text-center">
-            <div class="mb-3">
-                <button class="btn btn-secondary" onclick="prevImage()">← 上一张</button>
-                <span class="mx-3">${currentImageIndex + 1} / ${imageFiles.length}</span>
-                <button class="btn btn-secondary" onclick="nextImage()">下一张 →</button>
-            </div>
-            <img src="${url}" class="img-fluid rounded">
-            <div class="mt-3">${image.name}</div>
-        </div>`;
 
-    // const modalElement = document.getElementById('previewModal');
-    // if (modalElement && window.bootstrap) {
-    //     new bootstrap.Modal(modalElement).show();
-    // }
+    <div class="lightbox-container">
+
+        <div class="lightbox-toolbar">
+
+            <button
+                class="btn btn-outline-secondary btn-sm"
+                onclick="prevImage()">
+
+                ◀ 上一张
+
+            </button>
+
+            <div class="lightbox-info">
+
+                <span class="image-counter">
+
+                    ${currentImageIndex + 1}
+
+                    /
+
+                    ${imageFiles.length}
+
+                </span>
+
+                <span class="image-name">
+
+                    ${image.name}
+
+                </span>
+
+            </div>
+
+            <button
+                class="btn btn-outline-secondary btn-sm"
+                onclick="nextImage()">
+
+                下一张 ▶
+
+            </button>
+
+        </div>
+
+        <div class="lightbox-image-wrapper">
+
+            <img
+                src="${previewUrl}"
+                class="lightbox-image"
+                onclick="openFullImage('${downloadUrl}')">
+
+        </div>
+
+        <div class="lightbox-footer">
+
+            <a
+                href="${downloadUrl}"
+                class="btn btn-primary"
+                target="_blank">
+
+                ⬇ 下载原图
+
+            </a>
+
+        </div>
+
+    </div>
+
+    `;
 }
 
 function prevImage() {

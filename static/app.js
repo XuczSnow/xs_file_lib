@@ -14,8 +14,16 @@ document.addEventListener("DOMContentLoaded", function () {
     if (searchBox) searchBox.addEventListener("keyup", searchFiles);
 });
 
+document
+    .getElementById("login-page")
+    .addEventListener(
+        "keydown",
+        function(e){
+            if (e.key === 'Enter') login();
+        }
+    );
+
 async function login() {
-    const password = document.getElementById("password").value;
     const fd = new FormData();
     fd.append(
         "username",
@@ -463,7 +471,7 @@ async function loadFiles() {
             content.innerHTML += `
             <div class="file-item">
                 <div class="file-name" onclick="previewFile('${file.path}', imageFiles)">
-                    ├─ 📄 ${file.name}
+                    📄 ${file.name}
                 </div>
                 <div class="file-meta">
                     <span class="meta-size">
@@ -792,12 +800,14 @@ document.addEventListener(
 
 async function createShareLink() {
 
+    const share_mode = document.getElementById("shareMode").value;
     const days = document.getElementById("shareDays").value;
-    const password = document.getElementById("sharePassword").value
+    const password = document.getElementById("sharePassword").value;
     const fd = new FormData();
 
     fd.append("filepath", currentShareFile);
     fd.append("share_type", currentShareType);
+    fd.append("share_mode", share_mode);
     fd.append("days", days);
     fd.append("password", password);
 
@@ -989,9 +999,12 @@ async function loadShares() {
 
                 <span class="share-meta">
                     🔒 ${share.password
-                ? "已设置密码"
-                : "无需密码"
-            }
+                        ? "已设置密码"
+                        : "无需密码"
+                    }
+                </span>
+                <span class="share-meta">
+                    Ⓜ️ ${share.share_mode}
                 </span>
             </div>
 

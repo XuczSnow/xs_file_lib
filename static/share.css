@@ -1,58 +1,35 @@
 body {
-
     background: #f8fafc;
-
     min-height: 100vh;
-
     display: flex;
-
     justify-content: center;
-
     align-items: center;
-
     padding: 20px;
-
 }
 
+/* 登录界面 */
 .share-card {
-
     width: 100%;
-
     max-width: 480px;
-
     background: white;
-
     border-radius: 16px;
-
     padding: 30px;
-
     box-shadow:
         0 10px 30px rgba(0, 0, 0, .08);
-
 }
 
 .file-icon {
-
     font-size: 56px;
-
     text-align: center;
-
     margin-bottom: 15px;
-
 }
 
 .file-name {
-
     font-size: 18px;
-
     font-weight: 600;
-
     text-align: center;
-
     margin-bottom: 20px;
-
     word-break: break-all;
-
 }
 
 .share-file-name {
@@ -83,95 +60,213 @@ body {
     white-space: nowrap;
 }
 
+/* 文件界面 */
+.file-card {
+    display: none;
+    width: min(90vw, 1200px);
+    /* max-width: 480px; */
+    background: white;
+    border-radius: 16px;
+    padding: 30px;
+    box-shadow:
+        0 10px 30px rgba(0, 0, 0, .08);
+}
 
 .folder-header {
-
     text-align: center;
-
     margin-bottom: 20px;
-
 }
 
 .folder-download {
-
     text-align: center;
-
     margin-bottom: 20px;
-
 }
 
 .info-box {
-
     background: #f8fafc;
-
     padding: 14px;
-
     border-radius: 10px;
-
     margin-bottom: 20px;
-
 }
 
 .info-item {
-
     font-size: 14px;
-
     color: #64748b;
-
     margin-bottom: 6px;
-
 }
 
 #errorText {
-
     margin-top: 10px;
-
     color: #dc2626;
-
 }
 
 .download-btn {
-
     width: 100%;
+}
+
+/* 相册界面 */
+.album-card {
+    display: none;
+    width: 100%;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 20px;
+}
+
+.album-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 24px;
+}
+
+.album-section-title {
+    margin-top: 24px;
+    margin-bottom: 12px;
+    font-size: 20px;
+    font-weight: 600;
+}
+
+.album-grid {
+    display: grid;
+    grid-template-columns:
+        repeat(auto-fill,
+            minmax(220px,
+                1fr));
+    gap: 16px;
+}
+
+.album-item {
+    break-inside: avoid;
+    margin-bottom: 16px;
+    border-radius: 12px;
+    overflow: hidden;
+    cursor: pointer;
+    background: white;
+    border: 1px solid #e5e7eb;
+    transition: .2s ease;
+}
+
+.album-item:hover {
+    transform: translateY(-3px);
+    box-shadow:
+        0 10px 25px rgba(0, 0, 0, .12);
+}
+
+.album-item img {
+    width: 100%;
+    height: 240px;
+    display: block;
+    object-fit: cover;
+}
+
+.album-item-title {
+    padding: 10px;
+    font-size: 13px;
+    color: #475569;
+    text-align: center;
+}
+
+.video-grid {
+    display: grid;
+    grid-template-columns:
+        repeat(auto-fill,
+            minmax(320px,
+                1fr));
+    gap: 16px;
 
 }
+
+.video-card {
+    break-inside: avoid;
+    margin-bottom: 16px;
+    border-radius: 12px;
+    overflow: hidden;
+    cursor: pointer;
+    background: white;
+    border: 1px solid #e5e7eb;
+    transition: .2s ease;
+}
+
+.video-card:hover {
+    transform: translateY(-3px);
+    box-shadow:
+        0 10px 25px rgba(0, 0, 0, .12);
+}
+
+.video-card img {
+    width: 100%;
+    height: 240px;
+    display: block;
+    object-fit: cover;
+}
+
+.video-title {
+    padding: 10px;
+    text-align: center;
+    font-size: 13px;
+}
+
+
+/* @media (max-width:1000px) {
+    .album-grid {
+        column-count: 3;
+    }
+} */
+
+/* @media (max-width:768px) {
+
+    .album-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .video-grid {
+        grid-template-columns: 1fr;
+    }
+
+} */
 
 @media (prefers-color-scheme: dark) {
 
     body {
-
         background: #0f172a;
-
     }
 
     .share-card {
-
         background: #1e293b;
-
         color: white;
-
     }
 
     .info-box {
-
         background: #334155;
-
     }
 
     .info-item {
-
         color: #cbd5e1;
-
     }
 
     .form-control {
-
         background: #0f172a;
-
         color: white;
-
         border-color: #475569;
+    }
 
+    body.dark .album-item {
+        background: #1e293b;
+        border-color: #334155;
+    }
+
+    body.dark .album-item-title {
+        color: #cbd5e1;
+    }
+
+    body.dark .video-card {
+        background: #1e293b;
+        border-color: #334155;
+    }
+
+    body.dark .video-title {
+        color: #cbd5e1;
     }
 
 }

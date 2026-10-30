@@ -131,7 +131,10 @@ async function verifyShare() {
         // }
         // else {
 
-        renderFolder(data);
+        if (data.share_mode === "album")
+            renderAlbum(data);
+        else
+            renderFolder(data);
 
         // }
 
@@ -158,9 +161,13 @@ function renderFolder(data) {
 
     imageFiles = [];
 
-    document.querySelector(
-        ".share-card"
-    ).innerHTML = `
+    const share_card = document.getElementById("shareCard");
+    const file_card = document.getElementById("fileCard");
+
+    share_card.style.display = "none";
+    file_card.style.display = "block";
+
+    file_card.innerHTML = `
         <div class="folder-header">
             <h4>${data.name}</h4>
         </div>
@@ -286,4 +293,187 @@ function downloadFolderZip(shareId) {
             );
 
         });
+}
+
+// let share_imageFiles = [];
+
+function renderAlbum(data) {
+
+    // const container =
+    //     document.getElementById(
+    //         "shareContent"
+    //     );
+    imageFiles = []
+
+    const share_card = document.getElementById("shareCard");
+    const container = document.getElementById("albumCard");
+
+    share_card.style.display = "none";
+    container.style.display = "block";
+
+    let imagesHtml = "";
+    let videosHtml = "";
+
+    data.files.forEach(file => {
+
+        const ext =
+            file.name
+                .split(".")
+                .pop()
+                .toLowerCase();
+
+        const url =
+            "/api/share-folder-download/" +
+            data.share_id +
+            "/" +
+            encodeURIComponent(
+                file.name
+            );
+
+        const filePath =
+            data.name +
+            "/" +
+            file.name;
+
+        const imageTypes = [
+            "jpg",
+            "jpeg",
+            "png",
+            "gif",
+            "webp",
+            "bmp"
+        ];
+
+        const videoTypes = [
+            "mp4",
+            "webm",
+            "ogg"
+        ];
+
+        if (imageTypes.includes(ext)) {
+            const thumbUrl =
+                "/api/thumbnail/" +
+                encodeURIComponent(
+                    data.name +
+                    "/" +
+                    file.name
+                );
+
+            imageFiles.push({
+                path: filePath,
+                name: file.name
+            });
+
+            imagesHtml += `
+
+            <div
+                class="album-item"
+                onclick="
+                    previewFile('${filePath}', imageFiles)
+                ">
+
+                <img
+                    src="${thumbUrl}"
+                    loading="lazy">
+
+                <div class="album-item-title">
+                ${file.name}
+                </div>
+
+            </div>
+
+            `;
+        }
+
+        else if (videoTypes.includes(ext)) {
+            const thumbUrl =
+                "/api/video-thumbnail/" +
+                encodeURIComponent(
+                    data.name +
+                    "/" +
+                    file.name
+                );
+
+            videosHtml += `
+
+            <div
+                class="video-card",
+                onclick="
+                    window.location=
+                    '/share/video/' +
+                    '${data.share_id}' +
+                    '/' +
+                    '${encodeURIComponent(file.name)}'
+                ">
+
+                <img
+                    src="${thumbUrl}"
+                    loading="lazy">
+
+                <div
+                    class="video-title">
+
+                    🎬 ${file.name}
+
+                </div>
+
+            </div>
+
+            `;
+        }
+
+    });
+
+    container.innerHTML = `
+
+        <div class="album-header">
+
+            <h2>
+
+                ${data.name}
+
+            </h2>
+
+        </div>
+
+        ${imagesHtml
+            ?
+            `
+                <div class="album-section-title">
+
+                    🖼 图片
+
+                </div>
+
+                <div class="album-grid">
+
+                    ${imagesHtml}
+
+                </div>
+                `
+            :
+            ""
+        }
+
+        ${videosHtml
+            ?
+            `
+                <div class="album-section-title">
+
+                    🎬 视频
+
+                </div>
+
+                <div class="video-grid">
+
+                    ${videosHtml}
+
+                </div>
+                `
+            :
+            ""
+        }
+
+    `;
+
 }

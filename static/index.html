@@ -9,7 +9,8 @@
     <title id="pageTitle">XS File Library</title>
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="/static/style.css" rel="stylesheet">
+    <link href="./static/style.css" rel="stylesheet">
+    <link href="./static/preview.css" rel="stylesheet">
 </head>
 
 <body>
@@ -239,8 +240,18 @@
                         <option value="90">90天</option>
                         <option value="365">1年</option>
                     </select>
+                    <hr>
                     <label>提取密码</label>
                     <input id="sharePassword" class="form-control" placeholder="留空则无需密码">
+                    <hr>
+                    <select id="shareMode" class="form-select">
+                        <option value="normal">
+                            普通文件共享
+                        </option>
+                        <option value="album">
+                            相册模式
+                        </option>
+                    </select>
                 </div>
                 <div class="modal-footer">
                     <button class="btn btn-secondary" data-bs-dismiss="modal">
