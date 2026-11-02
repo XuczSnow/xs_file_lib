@@ -1,10 +1,12 @@
 from fastapi import FastAPI, UploadFile, File, Form, Request
 from fastapi.responses import FileResponse
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from datetime import datetime, timedelta
 from PIL import Image
 
+import av
 import os
 import json
 import uuid
@@ -24,10 +26,16 @@ ACCESS_LOG_CONF = "./config/share_access_log.json"
 UPLOAD_LINK_CONF = "./config/upload_links.json"
 SETTING_CONF = "./config/config.json"
 
+CHUNK_SIZE = 1024 * 1024
+
 os.makedirs(
     UPLOAD_DIR,
     exist_ok=True
 )
+
+def load_shares():
+    with open(SHARE_CONF,"r",encoding="utf-8") as f:
+        return json.load(f)
 
 def hash_password(password: str):
     return hashlib.sha256(
@@ -37,33 +45,15 @@ def hash_password(password: str):
 def write_share_access_log(data):
 
     try:
-
-        with open(
-            ACCESS_LOG_CONF,
-            "r",
-            encoding="utf-8"
-        ) as f:
-
+        with open(ACCESS_LOG_CONF,"r",encoding="utf-8") as f:
             logs = json.load(f)
-
     except:
-
         logs = []
 
     logs.append(data)
 
-    with open(
-        ACCESS_LOG_CONF,
-        "w",
-        encoding="utf-8"
-    ) as f:
-
-        json.dump(
-            logs,
-            f,
-            indent=4,
-            ensure_ascii=False
-        )
+    with open(ACCESS_LOG_CONF,"w",encoding="utf-8") as f:
+        json.dump(logs,f,indent=4,ensure_ascii=False)
 
 def init_config():
 
@@ -508,11 +498,7 @@ def create_share(
     share_id = str(uuid.uuid4())[:8]
     expire_time = datetime.now() + timedelta(days=days)
 
-    try:
-        with open(SHARE_CONF,"r",encoding="utf-8") as f:
-            shares = json.load(f)
-    except:
-        shares = {}
+    shares = load_shares()
 
     for sid, share in shares.items():
         if share["path"] == filepath:
@@ -559,8 +545,7 @@ def create_share(
 @app.get("/share/{share_id}")
 def access_share(share_id: str):
 
-    with open(SHARE_CONF,"r",encoding="utf-8") as f:
-        shares = json.load(f)
+    shares = load_shares()
 
     if share_id not in shares:
         return {"success": False}
@@ -572,8 +557,7 @@ def access_share(share_id: str):
 )
 def share_content(share_id: str):
     files = []
-    with open(SHARE_CONF,"r",encoding="utf-8") as f:
-        shares = json.load(f)
+    shares = load_shares()
 
     share = shares[share_id]
 
@@ -625,8 +609,7 @@ def share_folder_download(
     filename: str
 ):
 
-    with open(SHARE_CONF,"r",encoding="utf-8") as f:
-        shares = json.load(f)
+    shares = load_shares()
 
     share = shares[share_id]
     file_path = os.path.join(UPLOAD_DIR,share["path"],filename)
@@ -639,8 +622,7 @@ def share_check(
     password: str = Form("")
 ):
 
-    with open(SHARE_CONF,"r",encoding="utf-8") as f:
-        shares = json.load(f)
+    shares = load_shares()
 
     if share_id not in shares:
 
@@ -672,13 +654,7 @@ def share_download(
     share_id: str
 ):
 
-    with open(
-        SHARE_CONF,
-        "r",
-        encoding="utf-8"
-    ) as f:
-
-        shares = json.load(f)
+    shares = load_shares()
 
     if share_id not in shares:
 
@@ -713,21 +689,13 @@ def share_download(
     
 @app.get("/api/shares")
 def get_shares():
-    with open(SHARE_CONF, "r", encoding="utf-8") as f:
-        return json.load(f)
+    return load_shares()
     
 @app.post("/api/delete-share")
 def delete_share(
     share_id: str = Form(...)
 ):
-
-    with open(
-        SHARE_CONF,
-        "r",
-        encoding="utf-8"
-    ) as f:
-
-        shares = json.load(f)
+    shares = load_shares()
 
     if share_id in shares:
 
@@ -758,12 +726,7 @@ def share_info(
     request: Request
 ):
 
-    try:
-        with open(SHARE_CONF,"r",encoding="utf-8") as f:
-            shares = json.load(f)
-
-    except:
-        return {"success": False}
+    shares = load_shares()
 
     if share_id not in shares:
         return {
@@ -787,16 +750,13 @@ def share_info(
         "share_id": share_id,
         "path": share["path"],
         "visit_time":
-            datetime.now().strftime(
-                "%Y-%m-%d %H:%M:%S"
-            ),
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "real_ip":
+            request.headers.get("CF-Connecting-IP", ""),
         "ip":
             request.client.host,
         "user_agent":
-            request.headers.get(
-                "User-Agent",
-                ""
-            )
+            request.headers.get("User-Agent", "")
     })
 
     expire_time = datetime.strptime(
@@ -861,13 +821,7 @@ def share_folder_zip(
     share_id: str
 ):
 
-    with open(
-        SHARE_CONF,
-        "r",
-        encoding="utf-8"
-    ) as f:
-
-        shares = json.load(f)
+    shares = load_shares()
 
     if share_id not in shares:
 
@@ -1156,8 +1110,6 @@ def create_thumbnail(source,target,short_side=600):
     width, height = img.size
     scale = short_side / min(width, height)
 
-    print(scale)
-
     if scale < 1:
         new_width = int(width * scale)
         new_height = int(height * scale)
@@ -1228,50 +1180,22 @@ def share_video_page(
         "static/share_video.html"
     )
 
-@app.get(
-    "/api/share-video-info/{share_id}/{filename:path}"
-)
-def share_video_info(
-    share_id: str,
-    filename: str
-):
-
-    return {
-        "success": True,
-        "share_id": share_id,
-        "filename": filename,
-        "url":
-            f"/api/share-folder-download/{share_id}/{filename}"
-    }
-
-import subprocess
-import os
-
 def generate_video_thumbnail(
     source_path,
     thumb_path
 ):
 
-    os.makedirs(
-        os.path.dirname(thumb_path),
-        exist_ok=True
+    container = av.open(source_path)
+
+    frame = next(
+        container.decode(video=0)
     )
 
-    subprocess.run(
-        [
-            "ffmpeg",
-            "-y",
-            "-i",
-            source_path,
-            "-ss",
-            "00:00:01",
-            "-frames:v",
-            "1",
-            thumb_path
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL
-    )
+    img = frame.to_image()
+
+    img.save(thumb_path, quality=80)
+
+    container.close()
 
 @app.get(
     "/api/video-thumbnail/{filepath:path}"
@@ -1292,3 +1216,92 @@ def video_thumbnail(
         generate_video_thumbnail(source,thumb_file)
 
     return FileResponse(thumb_file)
+
+@app.get(
+    "/api/video-stream/{share_id}/{filename:path}"
+)
+async def share_video_stream(
+    share_id: str,
+    filename: str,
+    request: Request
+):
+
+    shares = load_shares()
+
+    if share_id not in shares:
+        return {"success": False}
+
+    share = shares[share_id]
+
+    folder_path = share["path"]
+
+    video_path = os.path.join(
+        UPLOAD_DIR,
+        folder_path,
+        filename
+    )
+
+    if not os.path.exists(video_path):
+        return {"success": False}
+
+    file_size = os.path.getsize(
+        video_path
+    )
+
+    range_header = request.headers.get(
+        "range"
+    )
+
+    if range_header:
+
+        start, end = range_header.replace(
+            "bytes=",
+            ""
+        ).split("-")
+
+        start = int(start)
+
+        end = (
+            int(end)
+            if end
+            else file_size - 1
+        )
+
+        length = end - start + 1
+
+        with open(
+            video_path,
+            "rb"
+        ) as f:
+
+            f.seek(start)
+
+            data = f.read(length)
+
+        return StreamingResponse(
+
+            iter([data]),
+
+            status_code=206,
+
+            media_type="video/mp4",
+
+            headers={
+
+                "Accept-Ranges":
+                    "bytes",
+
+                "Content-Range":
+                    f"bytes {start}-{end}/{file_size}",
+
+                "Content-Length":
+                    str(length)
+
+            }
+
+        )
+
+    return FileResponse(
+        video_path,
+        media_type="video/mp4"
+    )

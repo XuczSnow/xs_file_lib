@@ -74,10 +74,11 @@
             加载中...
 
         </div>
+        <div class="video-content" id="videoContent">
+            <video id="videoPlayer" controls>
 
-        <video id="videoPlayer" controls>
-
-        </video>
+            </video>
+        </div>
 
     </div>
 
@@ -97,26 +98,39 @@
                     parts.slice(4)
                         .join("/");
 
-                const response =
-                    await fetch(
-                        "/api/share-video-info/" +
-                        shareId +
-                        "/" +
-                        filename
-                    );
+                const filepath = shareId + "/" + 
+                    encodeURIComponent(filename)
 
-                const data =
-                    await response.json();
+                // const response =
+                //     await fetch(
+                //         "/api/share-video-info/" +
+                //         shareId +
+                //         "/" +
+                //         filename
+                //     );
+
+                // const data =
+                //     await response.json();
 
                 document.getElementById(
                     "videoTitle"
                 ).innerText =
-                    data.filename;
+                    filename;
 
                 document.getElementById(
-                    "videoPlayer"
-                ).src =
-                    data.url;
+                    "videoContent"
+                ).innerHTML = `
+                <video
+                    controls
+                    preload="metadata">
+
+                    <source
+                        src="/api/video-stream/${filepath}"
+                        type="video/mp4">
+
+                </video>
+
+                `
 
             };
 

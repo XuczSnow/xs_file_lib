@@ -1,7 +1,22 @@
 
 let currentShareId = "";
 
+async function loadSiteSetting() {
+
+    const response =
+        await fetch(
+            "/api/settings"
+        );
+
+    const settings = await response.json();
+
+    document.getElementById("pageTitle")
+        .innerText = settings.site_name;
+}
+
 window.onload = async function () {
+
+    loadSiteSetting()
 
     currentShareId =
         window.location.pathname
@@ -295,14 +310,8 @@ function downloadFolderZip(shareId) {
         });
 }
 
-// let share_imageFiles = [];
-
 function renderAlbum(data) {
 
-    // const container =
-    //     document.getElementById(
-    //         "shareContent"
-    //     );
     imageFiles = []
 
     const share_card = document.getElementById("shareCard");
@@ -313,6 +322,9 @@ function renderAlbum(data) {
 
     let imagesHtml = "";
     let videosHtml = "";
+
+    let imageCount = 0;
+    let videoCount = 0;
 
     data.files.forEach(file => {
 
@@ -351,6 +363,7 @@ function renderAlbum(data) {
         ];
 
         if (imageTypes.includes(ext)) {
+            imageCount++;
             const thumbUrl =
                 "/api/thumbnail/" +
                 encodeURIComponent(
@@ -386,6 +399,7 @@ function renderAlbum(data) {
         }
 
         else if (videoTypes.includes(ext)) {
+            videoCount++;
             const thumbUrl =
                 "/api/video-thumbnail/" +
                 encodeURIComponent(
@@ -425,22 +439,84 @@ function renderAlbum(data) {
 
     });
 
+    // container.innerHTML = `
+
+    //     <div class="album-header">
+
+    //         <h2>
+
+    //             ${data.name}
+
+    //         </h2>
+
+    //     </div>
+
+    let coverUrl = "";
+
+    if (imageFiles.length > 0) {
+        const coverFile =
+            imageFiles[Math.floor(Math.random() * imageFiles.length)];
+
+        coverUrl = "/api/preview-image/" +
+            encodeURIComponent(coverFile.path);
+    }
+
     container.innerHTML = `
 
-        <div class="album-header">
+        <div class="album-banner">
+            <img
+                class="album-cover-image"
+                src="${coverUrl}">
 
-            <h2>
+            <div class="album-overlay">
+                <div class="album-title">
+                    ${data.name}
+                </div>
 
-                ${data.name}
-
-            </h2>
-
+                <div class="album-stats">
+                    ${imageCount}张图片
+                    ·
+                    ${videoCount}个视频
+                </div>
+            </div>
         </div>
+        <div class="album-switch">
+            <div
+                id="showPhotosBtn"
+                class="album-entry active"
+                onclick="showPhotos()">
 
+                <div class="entry-icon">
+                    🖼
+                </div>
+                <div class="entry-title">
+                    图片
+                </div>
+                <div class="entry-count">
+                    ${imageCount} 张
+                </div>
+            </div>
+
+            <div
+                id="showVideosBtn"
+                class="album-entry"
+                onclick="showVideos()">
+
+                <div class="entry-icon">
+                    🎬
+                </div>
+                <div class="entry-title">
+                    视频
+                </div>
+                <div class="entry-count">
+                    ${videoCount} 个
+                </div>
+            </div>
+        </div>
         ${imagesHtml
             ?
             `
-                <div class="album-section-title">
+                <div class="album-section-title" id="photoSection">
 
                     🖼 图片
 
@@ -459,7 +535,7 @@ function renderAlbum(data) {
         ${videosHtml
             ?
             `
-                <div class="album-section-title">
+                <div class="album-section-title" id="videoSection">
 
                     🎬 视频
 
@@ -477,4 +553,23 @@ function renderAlbum(data) {
 
     `;
 
+}
+
+function showPhotos(){
+
+    document
+        .getElementById("photoSection")
+        .scrollIntoView({
+            behavior: "smooth",
+            block: "start"
+        });
+}
+
+function showVideos(){
+    document
+        .getElementById("videoSection")
+        .scrollIntoView({
+            behavior: "smooth",
+            block: "start"
+        });
 }

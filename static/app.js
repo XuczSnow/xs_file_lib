@@ -1,6 +1,8 @@
 let currentFolder = ".";
 
-loadSiteSetting()
+window.onload = async function () {
+    loadSiteSetting()
+}
 
 document.addEventListener("DOMContentLoaded", function () {
     const loginBtn = document.getElementById("loginBtn");
