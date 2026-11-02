@@ -1147,8 +1147,6 @@ async def guest_upload(
 
     }
 
-from PIL import Image
-
 def create_thumbnail(source,target,short_side=600):
 
     img = Image.open(source)

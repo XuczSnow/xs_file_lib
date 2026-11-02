@@ -399,11 +399,12 @@ function renderAlbum(data) {
             <div
                 class="video-card",
                 onclick="
-                    window.location=
+                    window.open(
                     '/share/video/' +
                     '${data.share_id}' +
                     '/' +
-                    '${encodeURIComponent(file.name)}'
+                    '${encodeURIComponent(file.name)}',
+                    '_blank')
                 ">
 
                 <img
