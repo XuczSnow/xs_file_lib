@@ -81,7 +81,9 @@ config.local.json
 *.tmp
 *.bak
 *.swp
-*.thumbs
+.thumbs
+cache
+
 
 # ==========================
 # 测试缓存

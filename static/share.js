@@ -258,7 +258,7 @@ function renderFolder(data) {
 
 }
 
-function downloadFolderZip(shareId) {
+async function downloadFolderZip(shareId) {
 
     const modal =
         new bootstrap.Modal(
@@ -269,45 +269,59 @@ function downloadFolderZip(shareId) {
 
     modal.show();
 
-    fetch(
-        "/api/share-folder-zip/" +
-        shareId
-    )
-        .then(res => res.blob())
-        .then(blob => {
+    const res =
+        await fetch(
+            "/api/share-folder-zip-task/" +
+            shareId,
+            {
+                method: "POST"
+            }
+        );
 
-            const url =
-                window.URL.createObjectURL(
-                    blob
-                );
+    const data = await res.json();
 
-            const a =
-                document.createElement(
-                    "a"
-                );
+    checkZipStatus(data.task_id);
+}
 
-            a.href = url;
+function checkZipStatus(taskId) {
 
-            a.download = "folder.zip";
+    const timer =
+        setInterval(
+            async () => {
+                const res =
+                    await fetch(
+                        "/api/share-folder-zip-status/" +
+                        taskId
+                    );
 
-            a.click();
+                const data = await res.json();
 
-            window.URL.revokeObjectURL(
-                url
-            );
+                if (data.status === "completed") {
 
-            modal.hide();
+                    clearInterval(timer);
 
-        })
-        .catch(() => {
+                    bootstrap.Modal
+                        .getInstance(
+                            document.getElementById(
+                                "zipLoadingModal"
+                            )
+                        )
+                        .hide();
 
-            modal.hide();
+                    window.location =
+                        "/api/share-folder-zip-download/" +
+                        taskId;
 
-            alert(
-                "打包失败"
-            );
+                }
 
-        });
+                else if (data.status === "failed") {
+
+                    clearInterval(timer);
+                    alert(data.message);
+                }
+            },
+            1000
+        );
 }
 
 function renderAlbum(data) {
@@ -555,7 +569,7 @@ function renderAlbum(data) {
 
 }
 
-function showPhotos(){
+function showPhotos() {
 
     document
         .getElementById("photoSection")
@@ -565,7 +579,7 @@ function showPhotos(){
         });
 }
 
-function showVideos(){
+function showVideos() {
     document
         .getElementById("videoSection")
         .scrollIntoView({

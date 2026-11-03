@@ -20,7 +20,7 @@ document
     .getElementById("login-page")
     .addEventListener(
         "keydown",
-        function(e){
+        function (e) {
             if (e.key === 'Enter') login();
         }
     );
@@ -417,25 +417,37 @@ async function loadFiles() {
                     </span>
                 </div>
                 <div class="folder-actions">
+                    ${hasPermission("download") ?
+                `
+                    <button
+                        class="icon-btn"
+                        title="下载文件夹"
+                        onclick="downloadFolderZip('${encodeURIComponent(folderShare)}')">
+                        <i class="bi bi-download"></i>
+                    </a>
+                    ` : ""}
                     ${hasPermission("share") ?
                 `
                     <button
-                        class="btn-action"
-                        onclick="createUploadLink('${folder}')">
-                        上传
+                        class="icon-btn"
+                        title="文件夹上传"
+                        onclick="createUploadLink('${folderShare}')">
+                        <i class="bi bi-upload"></i>
                     </button>
                     <button
-                        class="btn-action"
+                        class="icon-btn"
+                        title="共享"
                         onclick="shareFile('${folderShare}','folder')">
-                        共享
+                        <i class="bi bi-share"></i>
                     </button>
                     ` : ""}
                     ${hasPermission("share_manage") ?
                 `
                     <button
-                        class="btn-action"
+                        class="icon-btn"
+                        title="权限"
                         onclick="showFolderPermission('${folder}')">
-                        权限
+                        <i class="bi bi-shield-lock"></i>
                     </button>
                     ` : ""}
                 </div>
@@ -491,8 +503,9 @@ async function loadFiles() {
                     `
                     <a href="/api/download/${encodeURIComponent(file.path)}"
                     target="_blank"
-                    class="btn-action">
-                        下载
+                    title="下载"
+                    class="icon-btn">
+                        <i class="bi bi-download"></i>
                     </a>
                     ` : ""}
 
@@ -500,18 +513,30 @@ async function loadFiles() {
                     `
                     <button
                         onclick="shareFile('${file.path}', 'file')"
-                        class="btn-action">
-                        共享
+                        title="共享"
+                        class="icon-btn">
+                        <i class="bi bi-share"></i>
                     </button>
                     ` : ""}
 
+                    ${hasPermission("upload") ?
+                    `
+                    <button
+                        class="icon-btn"
+                        title="重命名"
+                        onclick="renameFile('${file.path}')">
+                        <i class="bi bi-pencil"></i>
+                    </button>
+                    ` : ""}                 
+
                     ${hasPermission("delete") ?
                     `
-                        <button
-                            onclick="deleteFile('${file.path}')"
-                            class="btn-action danger">
-                            删除
-                        </button>
+                    <button
+                        onclick="deleteFile('${file.path}')"
+                        title="删除"
+                        class="icon-btn delete-btn">
+                        <i class="bi bi-trash"></i>
+                    </button>
                     ` : ""}
                 </div>
             </div>
@@ -519,37 +544,6 @@ async function loadFiles() {
         });
     });
 }
-
-// function toggleFolder(folderId) {
-
-//     const content =
-//         document.getElementById(
-//             "folder-" + folderId
-//         );
-
-//     const title =
-//         document.querySelector(
-//             '[data-folder="' +
-//             folderId +
-//             '"]'
-//         );
-
-//     if (content.style.display === "none") {
-//         content.style.display = "block";
-//         title.innerHTML =
-//             title.innerHTML.replace(
-//                 "▸",
-//                 "▾"
-//             );
-//     } else {
-//         content.style.display = "none";
-//         title.innerHTML =
-//             title.innerHTML.replace(
-//                 "▾",
-//                 "▸"
-//             );
-//     }
-// }
 
 function toggleFolder(folderId, folderPath) {
 
@@ -1001,12 +995,15 @@ async function loadShares() {
 
                 <span class="share-meta">
                     🔒 ${share.password
-                        ? "已设置密码"
-                        : "无需密码"
-                    }
+                ? "已设置密码"
+                : "无需密码"
+            }
                 </span>
                 <span class="share-meta">
                     Ⓜ️ ${share.share_mode}
+                </span>
+                <span class="share-meta">
+                    ⬇️ Download
                 </span>
             </div>
 
@@ -1332,5 +1329,268 @@ async function loadSiteSetting() {
         .innerText = settings.site_name;
     document.getElementById("mobileSiteTitle")
         .innerText = "📁 " + settings.site_name;
+
+}
+
+
+let renamePath = "";
+
+function renameFile(path) {
+
+    renamePath = path;
+
+    document
+        .getElementById("renameInput")
+        .value = path.split("/").pop();
+
+    bootstrap.Modal
+        .getOrCreateInstance(
+            document.getElementById("renameModal")
+        ).show();
+
+}
+
+async function confirmRename() {
+
+    const newName =
+        document
+            .getElementById("renameInput")
+            .value;
+
+    const response =
+
+        await fetch(
+            "./api/rename",
+            {
+                method: "POST",
+                headers: {
+                    "Content-Type":
+                        "application/json"
+                },
+                body: JSON.stringify({
+                    path: renamePath,
+                    new_name: newName
+
+                })
+            }
+        );
+
+    const data =
+        await response.json();
+
+    if (data.success) {
+        loadFiles();
+
+        bootstrap.Modal
+            .getOrCreateInstance(
+                document.getElementById("renameModal")
+            ).hide();
+    }
+}
+
+
+async function downloadFolderZip(
+    folderPath
+) {
+
+    const taskId =
+        crypto.randomUUID();
+
+    createTaskCard(
+        taskId,
+        `📦 正在打包：${decodeURIComponent(folderPath)}`
+    );
+
+    const response =
+        await fetch(
+            "/api/folder-zip-task/" + folderPath,
+            { method: "POST" }
+        );
+
+    const data =
+        await response.json();
+
+    checkZipStatus(
+        taskId,
+        data.task_id
+    );
+}
+
+
+function createTaskCard(
+    taskId,
+    title
+) {
+
+    const container =
+        document.getElementById("taskContainer");
+
+    container.insertAdjacentHTML(
+
+        "beforeend",
+
+        `
+
+        <div
+            id="task-${taskId}"
+            class="task-card">
+
+            <div
+                class="task-title">
+
+                ${title}
+
+            </div>
+
+            <div
+                class="task-status">
+
+                正在打包...
+
+            </div>
+
+            <div
+                class="task-progress">
+
+                <div
+                    class="
+                    task-progress-bar">
+
+                </div>
+
+            </div>
+
+        </div>
+
+        `
+    );
+}
+
+function checkZipStatus(
+    uiTaskId,
+    taskId
+) {
+
+    const timer =
+
+        setInterval(
+
+            async () => {
+
+                const res =
+
+                    await fetch(
+
+                        "/api/share-folder-zip-status/" +
+
+                        taskId
+
+                    );
+
+                const data =
+                    await res.json();
+
+                if (
+                    data.status ===
+                    "completed"
+                ) {
+
+                    clearInterval(
+                        timer
+                    );
+
+                    completeTask(
+
+                        uiTaskId,
+
+                        data.filename
+
+                    );
+
+                    window.location =
+
+                        "/api/share-folder-zip-download/" +
+
+                        taskId;
+
+                }
+
+                else if (
+                    data.status ===
+                    "failed"
+                ) {
+
+                    clearInterval(
+                        timer
+                    );
+
+                    failTask(
+                        uiTaskId
+                    );
+
+                }
+
+            },
+
+            1500
+
+        );
+
+}
+
+function completeTask(
+    taskId,
+    filename
+) {
+
+    const card =
+
+        document.getElementById(
+            `task-${taskId}`
+        );
+
+    card.innerHTML = `
+
+        <div class="task-title">
+
+            ✅ ${filename}
+
+        </div>
+
+        <div class="task-status">
+
+            下载已开始
+
+        </div>
+
+    `;
+
+    setTimeout(() => {
+
+        card.remove();
+
+    }, 5000);
+
+}
+
+function failTask(
+    taskId
+) {
+
+    const card =
+
+        document.getElementById(
+            `task-${taskId}`
+        );
+
+    card.innerHTML = `
+
+        <div class="task-title">
+
+            ❌ 打包失败
+
+        </div>
+
+    `;
 
 }

@@ -95,23 +95,11 @@
                     parts[3];
 
                 const filename =
-                    parts.slice(4)
-                        .join("/");
+                    decodeURIComponent(parts.slice(4).join("/"));
 
                 const filepath = shareId + "/" + 
                     encodeURIComponent(filename)
-
-                // const response =
-                //     await fetch(
-                //         "/api/share-video-info/" +
-                //         shareId +
-                //         "/" +
-                //         filename
-                //     );
-
-                // const data =
-                //     await response.json();
-
+                
                 document.getElementById(
                     "videoTitle"
                 ).innerText =

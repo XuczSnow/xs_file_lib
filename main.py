@@ -5,6 +5,7 @@ from fastapi.staticfiles import StaticFiles
 
 from datetime import datetime, timedelta
 from PIL import Image
+from urllib.parse import unquote
 
 import av
 import os
@@ -13,12 +14,14 @@ import uuid
 import shutil
 import hashlib
 import zipfile
-import tempfile
+import threading
 
 app = FastAPI()
 
 UPLOAD_DIR = "./uploads"
 THUMB_DIR = "./.thumbs"
+CACHE_ZIP_DIR = "./cache/zips"
+
 USER_CONF = "./config/users.json"
 SHARE_CONF = "./config/shares.json"
 FPRMS_CONF = "./config/folder_permissions.json"
@@ -28,10 +31,7 @@ SETTING_CONF = "./config/config.json"
 
 CHUNK_SIZE = 1024 * 1024
 
-os.makedirs(
-    UPLOAD_DIR,
-    exist_ok=True
-)
+zip_tasks = {}
 
 def load_shares():
     with open(SHARE_CONF,"r",encoding="utf-8") as f:
@@ -41,6 +41,21 @@ def hash_password(password: str):
     return hashlib.sha256(
         password.encode("utf-8")
     ).hexdigest()
+
+def get_folder_hash(folder_path):
+    md5 = hashlib.md5()
+    for root, _, files in os.walk(folder_path):
+        for file in sorted(files):
+            file_path = os.path.join(root,file)
+            stat = os.stat(file_path)
+            md5.update(file.encode())
+            md5.update(
+                str(stat.st_mtime).encode()
+            )
+            md5.update(
+                str(stat.st_size).encode()
+            )
+    return md5.hexdigest()
 
 def write_share_access_log(data):
 
@@ -56,6 +71,10 @@ def write_share_access_log(data):
         json.dump(logs,f,indent=4,ensure_ascii=False)
 
 def init_config():
+
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    os.makedirs(THUMB_DIR, exist_ok=True)
+    os.makedirs(CACHE_ZIP_DIR, exist_ok=True)
 
     # 用户配置
 
@@ -718,8 +737,6 @@ def delete_share(
         "success": True
     }
 
-from datetime import datetime
-
 @app.get("/api/share-info/{share_id}")
 def share_info(
     share_id: str,
@@ -813,94 +830,168 @@ def get_share_access_log(
         for item in logs
         if item["share_id"] == share_id
     ]
-    
-@app.get(
-    "/api/share-folder-zip/{share_id}"
+
+def build_zip_task(
+    task_id,
+    folder_path
+):
+
+    try:
+        folder_hash = get_folder_hash(
+            folder_path
+        )
+
+        cache_zip = os.path.join(
+            CACHE_ZIP_DIR,
+            f"{folder_hash}.zip"
+        )
+
+        #
+        # 已缓存
+        #
+        if os.path.exists(cache_zip):
+
+            zip_tasks[task_id] = {
+                "status":
+                    "completed",
+
+                "zip_file":
+                    cache_zip,
+
+                "filename":
+                    os.path.basename(
+                        folder_path
+                    ) + ".zip"
+            }
+
+            return
+
+        #
+        # 开始压缩
+        #
+        with zipfile.ZipFile(
+            cache_zip,
+            "w",
+            zipfile.ZIP_DEFLATED
+        ) as z:
+            for root, _, files in os.walk(folder_path):
+                for file in files:
+                    file_path = os.path.join(root,file)
+                    arc_name = os.path.relpath(file_path,folder_path)
+                    z.write(file_path,arc_name)
+
+        zip_tasks[task_id] = {
+            "status":
+                "completed",
+
+            "zip_file":
+                cache_zip,
+
+            "filename":
+                os.path.basename(
+                    folder_path
+                ) + ".zip"
+        }
+
+    except Exception as e:
+        zip_tasks[task_id] = {
+            "status":"failed",
+            "message":str(e)
+        }
+
+@app.post(
+    "/api/folder-zip-task/{folder_path:path}"
+)
+def folder_zip(
+    folder_path: str
+):
+    # folder_path = unquote(folder_path)
+    folder_path = os.path.join(
+        UPLOAD_DIR,
+        folder_path
+    )
+    task_id = str(uuid.uuid4())
+    zip_tasks[task_id] = {
+        "status":
+            "processing"
+    }
+
+    threading.Thread(
+        target = build_zip_task,
+        args = (task_id, folder_path),
+        daemon = True
+    ).start()
+
+    return {
+        "task_id": task_id
+    }
+
+@app.post(
+    "/api/share-folder-zip-task/{share_id}"
 )
 def share_folder_zip(
     share_id: str
 ):
-
+    
     shares = load_shares()
-
-    if share_id not in shares:
-
-        return {
-            "success": False,
-            "message": "共享不存在"
-        }
-
     share = shares[share_id]
-
-    if share["type"] != "folder":
-
-        return {
-            "success": False,
-            "message": "不是文件夹共享"
-        }
 
     folder_path = os.path.join(
         UPLOAD_DIR,
         share["path"]
     )
 
-    if not os.path.exists(folder_path):
+    task_id = str(uuid.uuid4())
+    zip_tasks[task_id] = {
+        "status":
+            "processing"
+    }
 
-        return {
-            "success": False,
-            "message": "文件夹不存在"
-        }
+    threading.Thread(
+        target = build_zip_task,
+        args = (task_id, folder_path),
+        daemon = True
+    ).start()
 
-    temp_zip = tempfile.NamedTemporaryFile(
-        delete=False,
-        suffix=".zip"
+    return {
+        "task_id": task_id
+    }
+
+@app.get(
+    "/api/share-folder-zip-status/{task_id}"
+)
+def zip_status(
+    task_id: str
+):
+    return zip_tasks.get(
+        task_id,
+        {"status": "not_found"}
     )
 
-    with zipfile.ZipFile(
-        temp_zip.name,
-        "w",
-        zipfile.ZIP_DEFLATED
-    ) as zipf:
+@app.get(
+    "/api/share-folder-zip-download/{task_id}"
+)
+def zip_download(
+    task_id: str
+):
 
-        for root, dirs, files in os.walk(folder_path):
-
-            for file in files:
-
-                full_path = os.path.join(
-                    root,
-                    file
-                )
-
-                arc_name = os.path.relpath(
-                    full_path,
-                    folder_path
-                )
-
-                zipf.write(
-                    full_path,
-                    arc_name
-                )
+    task = zip_tasks.get(task_id)
 
     return FileResponse(
-        temp_zip.name,
+        task["zip_file"],
         filename=
-            os.path.basename(
-                share["path"]
-            ) + ".zip",
-        media_type="application/zip"
+            task["filename"],
+        media_type=
+            "application/zip"
     )
-    
+
 @app.post(
     "/api/create-upload-link"
 )
 def create_upload_link(
-
     folder: str = Form(...),
-
     days: int = Form(...),
-
     password: str = Form("")
-
 ):
 
     upload_id = str(
@@ -1226,6 +1317,7 @@ async def share_video_stream(
     request: Request
 ):
 
+    filename = unquote(filename)
     shares = load_shares()
 
     if share_id not in shares:
@@ -1305,3 +1397,23 @@ async def share_video_stream(
         video_path,
         media_type="video/mp4"
     )
+
+@app.post("/api/rename")
+async def rename_file(
+    request: Request
+):
+
+    data = await request.json()
+    path = data["path"]
+    new_name = data["new_name"]
+    old_path = os.path.join(UPLOAD_DIR,path)
+    new_path = os.path.join(
+        os.path.dirname(old_path),
+        new_name
+    )
+
+    os.rename(old_path,new_path)
+
+    return {
+        "success": True
+    }
