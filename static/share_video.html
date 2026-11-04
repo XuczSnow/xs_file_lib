@@ -4,62 +4,320 @@
 <head>
 
     <meta charset="UTF-8">
-
     <meta name="viewport" content="width=device-width, initial-scale=1">
-
     <title>视频播放</title>
+    <link href="/static/vendor/bootstrap.min.css" rel="stylesheet">
+    <link href="/static/vendor/bootstrap-icons.min.css" rel="stylesheet">
 
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-
+    <!-- 视频播放页内联样式：与相册页统一浅色风格（#f8fafc 底 + 白卡片 + #2563eb 强调）；
+         顶栏（返回 + 标题）/ 播放器 / 下方图标菜单栏 / 右侧选集面板；
+         "全屏"为页面内占满模式（保留浏览器界面，不进入 OS 全屏） -->
     <style>
+        :root {
+            --vid-bg: #f8fafc;
+            --vid-card: #ffffff;
+            --vid-line: #e5e7eb;
+            --vid-text: #1e293b;
+            --vid-sub: #64748b;
+            --vid-accent: #2563eb;
+        }
+
         body {
-
-            background: #0f172a;
-
+            background: var(--vid-bg);
             min-height: 100vh;
-
             margin: 0;
+        }
 
+        /* 菜单栏（视频下方）：胶囊分段控件组（与相册页 .album-switch 同款），整体居中；
+           无顶栏（标题在浏览器标签页显示），视频空间尽量大 */
+        .player-controls {
             display: flex;
-
-            justify-content: center;
-
             align-items: center;
-
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 8px;
+            padding: 10px 0 4px;
         }
 
-        .player-container {
-
-            width: 100%;
-
-            max-width: 1400px;
-
-            padding: 20px;
-
+        .vid-switch {
+            display: inline-flex;
+            align-items: center;
+            gap: 2px;
+            padding: 3px;
+            background: #f1f5f9;
+            border: 1px solid #e2e8f0;
+            border-radius: 999px;
         }
 
-        video {
+        /* 单个 pill：图标 + 文字；选中（active）为白色 + 浅阴影，与相册页一致 */
+        .pill-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 6px 14px;
+            border: 1px solid transparent;
+            border-radius: 999px;
+            background: transparent;
+            color: var(--vid-sub);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            white-space: nowrap;
+            transition:
+                background .18s ease,
+                color .18s ease,
+                box-shadow .18s ease;
+        }
 
-            width: 100%;
+        .pill-btn .bi { font-size: 15px; }
 
-            max-height: 85vh;
+        .pill-btn:hover {
+            color: var(--vid-text);
+            background: rgba(255, 255, 255, .6);
+        }
 
-            background: black;
+        /* 选中态：白色胶囊 + 深色文字 + 浅阴影（相册页 .album-entry.active 同款） */
+        .pill-btn.active {
+            background: #ffffff;
+            border-color: #e2e8f0;
+            color: #1e293b;
+            box-shadow: 0 2px 6px rgba(15, 23, 42, .14);
+        }
 
+        .pill-btn:disabled {
+            opacity: .35;
+            cursor: not-allowed;
+            background: transparent;
+            box-shadow: none;
+        }
+
+        /* 主体布局：主播放区 + 右侧选集面板 */
+        .player-layout {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) 340px;
+            gap: 16px;
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 16px;
+        }
+
+        .player-main {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            min-width: 0;
+        }
+
+        .video-content {
+            background: transparent;
             border-radius: 12px;
-
+            overflow: hidden;
         }
 
-        .video-title {
+        /* 普通模式：宽度自适应，高受限 80vh（无顶栏，视频空间尽量大）；画布透明无黑边 */
+        video {
+            width: 100%;
+            height: auto;
+            max-height: 80vh;
+            display: block;
+            background: transparent;
+        }
 
-            color: white;
+        /* 选集面板：白色卡片，与相册页卡片同规格 */
+        .ep-panel {
+            background: var(--vid-card);
+            border: 1px solid var(--vid-line);
+            border-radius: 12px;
+            padding: 14px;
+            align-self: start;
+            position: sticky;
+            top: 16px;
+            max-height: calc(100vh - 32px);
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 16px rgba(15, 23, 42, .05);
+        }
 
+        .ep-panel h5 {
+            color: var(--vid-text);
+            font-size: 15px;
+            font-weight: 600;
+            margin: 0 0 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .ep-panel h5 .ep-count {
+            color: var(--vid-sub);
+            font-weight: 400;
+            font-size: 13px;
+        }
+
+        .ep-list {
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            scrollbar-width: thin;
+            scrollbar-color: #cbd5e1 transparent;
+        }
+
+        .ep-item {
+            display: flex;
+            gap: 10px;
+            padding: 8px;
+            border-radius: 10px;
+            cursor: pointer;
+            border: 1px solid transparent;
+            transition: background .15s ease, border-color .15s ease;
+            align-items: center;
+        }
+
+        .ep-item:hover {
+            background: #f1f5f9;
+        }
+
+        /* 当前播放集：浅色高亮 + 强调描边 */
+        .ep-item.active {
+            background: rgba(37, 99, 235, .08);
+            border-color: var(--vid-accent);
+        }
+
+        .ep-thumb {
+            position: relative;
+            width: 84px;
+            height: 48px;
+            flex: 0 0 84px;
+            border-radius: 6px;
+            overflow: hidden;
+            background: #e2e8f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .ep-thumb img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        .ep-thumb .ep-thumb-fallback {
             font-size: 20px;
+            color: #94a3b8;
+        }
 
+        .ep-item.active .ep-thumb::after {
+            content: "▶";
+            position: absolute;
+            top: 4px;
+            left: 6px;
+            font-size: 12px;
+            color: #60a5fa;
+            text-shadow: 0 1px 3px rgba(0, 0, 0, .8);
+        }
+
+        .ep-meta {
+            min-width: 0;
+            flex: 1;
+        }
+
+        .ep-name {
+            color: var(--vid-text);
+            font-size: 13px;
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .ep-item.active .ep-name {
+            color: var(--vid-accent);
+        }
+
+        .ep-sub {
+            color: var(--vid-sub);
+            font-size: 12px;
+            margin-top: 3px;
+        }
+
+        .ep-no {
+            color: var(--vid-sub);
+            font-size: 12px;
+            font-weight: 700;
+            flex: 0 0 auto;
+            min-width: 28px;
             text-align: center;
+        }
 
-            margin-bottom: 12px;
+        .ep-item.active .ep-no {
+            color: var(--vid-accent);
+        }
 
+        .ep-empty {
+            color: var(--vid-sub);
+            font-size: 13px;
+            text-align: center;
+            padding: 20px 0;
+        }
+
+        /* 占满模式（body.video-max）：页面内视频尽量铺满，保留浏览器界面；
+           选集面板让位隐藏，视频高度放大到视口高度减去顶栏与菜单栏 */
+        body.video-max .ep-panel {
+            display: none;
+        }
+
+        body.video-max .player-layout {
+            grid-template-columns: 1fr;
+            padding-top: 12px;
+        }
+
+        /* 占满模式：视频盒子铺满宽度 × 视口剩余高度（无顶栏，仅扣菜单栏高度），
+           object-fit:contain 保证不拉伸变形，留白随画布透明（不黑边） */
+        body.video-max video {
+            width: 100%;
+            height: calc(100vh - 110px);
+            max-height: none;
+            object-fit: contain;
+            margin: 0;
+        }
+
+        /* 窄屏：选集面板沉底；菜单栏居中对齐 */
+        @media (max-width: 900px) {
+            .player-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .ep-panel {
+                position: static;
+                max-height: 420px;
+                order: 2;
+            }
+
+            video {
+                max-height: 56vh;
+            }
+
+            .player-controls {
+                justify-content: center;
+            }
+
+            /* 窄屏 pill：隐藏文字只显示图标（.lbl），收窄为紧凑圆形 */
+            .pill-btn {
+                padding: 8px 10px;
+                font-size: 12px;
+                gap: 0;
+            }
+
+            .pill-btn .lbl {
+                display: none;
+            }
+
+            .pill-btn .bi {
+                font-size: 16px;
+            }
         }
     </style>
 
@@ -67,62 +325,44 @@
 
 <body>
 
-    <div class="player-container">
+    <div class="player-layout">
 
-        <div id="videoTitle" class="video-title">
-
-            加载中...
-
+        <!-- 主播放区：播放器 + 下方胶囊菜单栏（居中：返回共享/上一集/下一集/连播/下载/全屏） -->
+        <div class="player-main">
+            <div class="video-content" id="videoContent">
+                <video id="videoPlayer" controls preload="metadata"></video>
+            </div>
+            <div class="player-controls">
+                <div class="vid-switch">
+                    <a id="backToShare" class="pill-btn" href="/share/" title="返回共享">
+                        <i class="bi bi-box-arrow-left"></i><span class="lbl">返回共享</span></a>
+                    <button id="prevEp" class="pill-btn" title="上一集" aria-label="上一集" disabled>
+                        <i class="bi bi-skip-start-fill"></i><span class="lbl">上一集</span></button>
+                    <button id="nextEp" class="pill-btn" title="下一集" aria-label="下一集" disabled>
+                        <span class="lbl">下一集</span><i class="bi bi-skip-end-fill"></i></button>
+                    <button id="autoplayBtn" class="pill-btn active" title="自动连播：开" aria-label="自动连播">
+                        <i class="bi bi-collection-play-fill"></i><span class="lbl">连播</span></button>
+                    <button id="downloadBtn" class="pill-btn" title="下载当前视频" aria-label="下载当前视频">
+                        <span class="lbl">下载</span><i class="bi bi-download"></i></button>
+                    <button id="maxBtn" class="pill-btn" title="全屏" aria-label="全屏">
+                        <i class="bi bi-fullscreen"></i><span class="lbl">全屏</span></button>
+                </div>
+            </div>
         </div>
-        <div class="video-content" id="videoContent">
-            <video id="videoPlayer" controls>
 
-            </video>
-        </div>
+        <!-- 选集面板：缩略图 + 编号 + 文件名 + 大小；点击切源不重开窗口 -->
+        <aside class="ep-panel" id="epPanel">
+            <h5>选集 <span class="ep-count" id="epCount"></span></h5>
+            <div class="ep-list" id="epList">
+                <div class="ep-empty">加载中...</div>
+            </div>
+        </aside>
 
     </div>
 
-    <script>
-
-        window.onload =
-            async function () {
-
-                const parts =
-                    window.location.pathname
-                        .split("/");
-
-                const shareId =
-                    parts[3];
-
-                const filename =
-                    decodeURIComponent(parts.slice(4).join("/"));
-
-                const filepath = shareId + "/" + 
-                    encodeURIComponent(filename)
-                
-                document.getElementById(
-                    "videoTitle"
-                ).innerText =
-                    filename;
-
-                document.getElementById(
-                    "videoContent"
-                ).innerHTML = `
-                <video
-                    controls
-                    preload="metadata">
-
-                    <source
-                        src="/api/video-stream/${filepath}"
-                        type="video/mp4">
-
-                </video>
-
-                `
-
-            };
-
-    </script>
+    <!-- common.js（XSLib）+ 本页逻辑 -->
+    <script src="/static/common.js"></script>
+    <script src="/static/share_video.js"></script>
 
 </body>
 

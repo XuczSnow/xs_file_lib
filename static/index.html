@@ -6,15 +6,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
 
+    <!-- 站点标题（由 app.js loadSiteSetting 动态替换为站点名） -->
     <title id="pageTitle">XS File Library</title>
 
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.13.2/font/bootstrap-icons.min.css" rel="stylesheet">
+    <!-- 第三方库：Bootstrap（栅格/按钮/弹窗）与图标，已本地化到 static/vendor（CDN 加固）-->
+    <link href="./static/vendor/bootstrap.min.css" rel="stylesheet">
+    <link href="./static/vendor/bootstrap-icons.min.css" rel="stylesheet">
+    <!-- 自有样式：主界面 + 预览灯箱 -->
     <link href="./static/style.css" rel="stylesheet">
     <link href="./static/preview.css" rel="stylesheet">
 </head>
 
 <body>
+    <!-- ===== 登录页：登录成功后隐藏 ===== -->
     <div id="login-page" class="login-container">
         <div class="card p-4 shadow">
             <h3 class="mb-3" id="siteTitle">
@@ -29,7 +33,9 @@
         </div>
     </div>
 
+    <!-- ===== 主界面：默认隐藏，登录成功后显示 ===== -->
     <div id="main-page" style="display:none;">
+        <!-- 移动端顶栏（桌面端隐藏，≤768px 显示） -->
         <div id="mobileHeader" class="mobile-header">
 
             <div class="mobile-header-top">
@@ -48,6 +54,7 @@
             </div>
 
         </div>
+        <!-- 侧边栏（桌面端显示，≤768px 隐藏）：导航入口 + 当前用户 -->
         <div class="sidebar">
             <h4>📁 <span id="sideTitle">XS File Library</span> </h4>
             <hr>
@@ -68,7 +75,7 @@
                 📁 文件管理
             </button>
             <button id="shareManageBtn" class="btn btn-secondary w-100 mt-2" onclick="showShareManager()">
-                🔗 共享管理
+                🔗 链接管理
             </button>
             <button id="userManageBtn" class="btn btn-secondary w-100 mt-2" onclick="showUserManager()">
                 🧑‍🤝‍🧑 用户管理
@@ -78,9 +85,13 @@
             </button>
             <hr>
         </div>
+        <!-- 主内容区：顶部任务容器（zip 打包进度卡片）+ 四个互斥面板 -->
         <div class="content">
+            <!-- 文件夹打包任务的进度卡片容器（默认空） -->
             <div id="taskContainer" class="task-container">
             </div>
+
+            <!-- ① 文件管理面板（搜索 / 上传 / 新建文件夹 / 文件列表） -->
             <div id="filePage">
                 <div class="header-bar">
                     <input id="search" class="form-control" placeholder="🔍 搜索文件">
@@ -113,15 +124,17 @@
                 </div>
             </div>
 
+            <!-- ② 共享管理面板（统一展示共享链接 + 访客上传链接） -->
             <div id="shareManagerPage" style="display:none">
                 <div class="share-header">
-                    <h3>🔗 共享管理</h3>
+                    <h3>🔗 共享与上传链接</h3>
                     <span class="share-count" id="shareCount">
-                        0 个共享
+                        0 个链接
                     </span>
                 </div>
                 <div id="shareList"></div>
             </div>
+            <!-- ③ 用户管理面板（新增 / 删除） -->
             <div id="userManagerPage" style="display:none;">
                 <h3>🧑‍🤝‍🧑 用户管理</h3>
                 <div class="card p-3">
@@ -170,7 +183,6 @@
                         <thead>
                             <tr>
                                 <th>用户名</th>
-                                <!-- <th>角色</th> -->
                                 <th>操作</th>
                             </tr>
                         </thead>
@@ -180,6 +192,7 @@
                 </div>
             </div>
 
+            <!-- ④ 系统设置面板（站点名称 / 文件根目录） -->
             <div id="settingManagerPage" style="display:none;">
                 <h3>⚙️ 系统设置</h3>
                 <div class="card p-3">
@@ -199,6 +212,7 @@
                 </button>
             </div>
         </div>
+        <!-- 移动端底部导航（桌面端隐藏，≤768px 显示） -->
         <div id="mobileNav" class="mobile-nav">
 
             <button id="mobileFileBtn" onclick="showFilePage()">
@@ -225,6 +239,9 @@
 
     </div>
 
+    <!-- ===== 弹窗组（bootstrap modal） ===== -->
+
+    <!-- 共享链接：有效期 / 提取密码 / 共享模式 -->
     <div class="modal fade" id="shareModal" tabindex="-1">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -268,6 +285,7 @@
         </div>
     </div>
 
+    <!-- 文件夹权限：勾选可访问该文件夹的用户 -->
     <div class="modal fade" id="folderPermissionModal">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -287,6 +305,7 @@
         </div>
     </div>
 
+    <!-- 文件预览：#previewContent 由 preview.js 填充（图片灯箱/视频/音频/PDF/文本） -->
     <div class="modal fade" id="previewModal">
         <div class="modal-dialog modal-xl">
             <div class="modal-content">
@@ -306,6 +325,7 @@
         </div>
     </div>
 
+    <!-- 重命名文件：默认值取路径末段 -->
     <div class="modal fade" id="renameModal">
         <div class="modal-dialog">
             <div class="modal-content">
@@ -324,9 +344,30 @@
         </div>
     </div>
 
+    <!-- 链接二维码：#qrImage 由 app.js showLinkQr 填充后端 /api/qr/{id} 的 PNG -->
+    <div class="modal fade" id="qrModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content text-center p-4">
+                <h5 class="modal-title mb-3">链接二维码</h5>
+                <img id="qrImage" alt="链接二维码"
+                     style="width:220px;height:220px;margin:auto;display:block">
+                <div id="qrUrlText"
+                     class="qr-copy-hint text-muted small mt-3 mb-1"
+                     style="cursor:pointer;word-break:break-all">
+                </div>
+                <div class="text-muted" style="font-size:12px">点击链接可复制 · 扫码设备需能访问本机服务地址</div>
+                <div class="modal-footer" style="justify-content:center">
+                    <button class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 脚本加载顺序：先公共工具 → 业务逻辑 → 预览 → bootstrap（弹窗依赖） -->
+    <script src="./static/common.js"></script>
     <script src="./static/app.js"></script>
     <script src="./static/preview.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="./static/vendor/bootstrap.bundle.min.js"></script>
 </body>
 
 </html>

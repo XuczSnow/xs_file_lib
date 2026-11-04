@@ -3,3 +3,5 @@ uvicorn
 av
 Pillow
 python-multipart
+qrcode
+bcrypt

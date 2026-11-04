@@ -1,11 +1,17 @@
+/* =========================================================================
+   style.css —— 主界面（index.html）样式
+   结构：全局 → 登录 → 侧边栏 → 内容区(任务卡片) → 文件页面
+        → 上传工具栏 → 共享管理 → 用户管理 → 深色模式 → 移动端
+   ========================================================================= */
+
+/* ---------- 全局 ---------- */
 body {
     margin: 0;
     font-family: Segoe UI;
     overflow: hidden;
 }
 
-/* 登录界面 */
-
+/* ---------- 登录界面 ---------- */
 .login-container {
     height: 100vh;
     display: flex;
@@ -14,8 +20,7 @@ body {
     background: #f5f5f5;
 }
 
-/* 侧边栏 */
-
+/* ---------- 侧边栏（桌面端固定 280px 宽，移动端隐藏） ---------- */
 .sidebar {
     width: 280px;
     height: 100vh;
@@ -29,6 +34,7 @@ body {
         transparent transparent;
 }
 
+/* 侧边栏滚动条：默认透明，悬停时显现 */
 .sidebar:hover {
     scrollbar-color:
         rgba(148, 163, 184, .5) transparent;
@@ -46,6 +52,7 @@ body {
     background: rgba(148, 163, 184, .5);
 }
 
+/* 侧边栏内的当前用户信息块 */
 .user-panel {
     background: rgba(255, 255, 255, 0.1);
     border: 1px solid #334155;
@@ -65,8 +72,7 @@ body {
     transition: .2s;
 }
 
-/* 内容区域 */
-
+/* ---------- 内容区域（侧边栏右侧的主面板，可纵向滚动） ---------- */
 .content {
     margin-left: 280px;
     height: 100vh;
@@ -76,6 +82,7 @@ body {
     padding: 20px;
 }
 
+/* 内容区滚动条样式 */
 .content::-webkit-scrollbar {
     width: 8px;
 }
@@ -89,6 +96,9 @@ body {
     background: rgba(148, 163, 184, .7);
 }
 
+/* ---------- 文件夹打包任务进度卡片 ---------- */
+
+/* 任务容器：吸顶在内容区顶部 */
 .task-container {
     position: sticky;
     top: 10px;
@@ -117,6 +127,7 @@ body {
     color: #64748b;
 }
 
+/* 打包中：进度条用 keyframes 做左右跑动的加载动画 */
 .task-progress {
     width: 100%;
     height: 6px;
@@ -147,14 +158,15 @@ body {
 }
 
 
-/* ===================== */
-/* 文件页面 */
-/* ===================== */
+/* =========================================================================
+   文件管理页面
+   ========================================================================= */
 
 .header-bar {
     margin-bottom: 20px;
 }
 
+/* "当前目录"选择器外观（伪装成 Bootstrap 输入框） */
 .current-folder {
     display: flex;
     align-items: center;
@@ -186,6 +198,7 @@ body {
     margin-bottom: 10px;
 }
 
+/* 文件夹卡片：外层容器 */
 .folder-card {
     border: 1px solid #ddd;
     border-radius: 10px;
@@ -193,6 +206,7 @@ body {
     overflow: hidden;
 }
 
+/* 文件夹标题行：展开指示器 + 文件夹名 + 操作按钮 */
 .folder-title {
     display: flex;
     align-items: center;
@@ -210,6 +224,7 @@ body {
     cursor: pointer;
 }
 
+/* 展开的文件夹内容区：左侧竖线表示层级 */
 .folder-content {
     padding-left: 30px;
     padding-right: 12px;
@@ -221,11 +236,12 @@ body {
     gap: 8px;
 }
 
+/* 当前选中文件夹的高亮底色 */
 .folder-selected {
     background: #dbeafe;
 }
 
-/* 文件夹属性 */
+/* 文件夹属性：文件数 / 总大小 的标签 */
 .folder-meta {
     display: flex;
     align-items: center;
@@ -245,6 +261,7 @@ body {
     white-space: nowrap;
 }
 
+/* 文件行：文件名 + 属性 + 操作按钮 */
 .file-item {
     display: flex;
     justify-content: space-between;
@@ -266,15 +283,7 @@ body {
     gap: 8px;
 }
 
-.file-title {
-    font-weight: 600;
-}
-
-.file-info {
-    flex: 1;
-}
-
-/* 文件属性 */
+/* 文件属性：大小 / 类型 / 修改时间 三列网格（右对齐） */
 .file-meta {
     display: grid;
     color: #6b7280;
@@ -288,6 +297,7 @@ body {
     text-transform: uppercase;
 }
 
+/* 图标按钮（下载/共享/重命名/删除） */
 .icon-btn {
     width: 34px;
     height: 34px;
@@ -307,24 +317,145 @@ body {
     color: #2563eb;
 }
 
+/* 删除按钮：悬停红色警示 */
 .icon-btn.delete-btn:hover {
     background: #fee2e2;
     color: #dc2626;
 }
 
 
-.dark {
-    background: #111827;
-    color: white;
+/* =========================================================================
+   树状文件结构（管理页 / 共享页共用）
+   布局：.node-content 嵌套固定缩进（每层 22px），折叠由 .tree-node.collapsed
+        驱动（指示器旋转 + 内容隐藏），不再依赖内联 padding-left。
+   ========================================================================= */
+
+:root {
+    --tree-indent: 22px;
+    --tree-line: #cbd5e1;
+    --tree-title-bg: #ffffff;
+    --tree-title-border: #e5e7eb;
+    --tree-title-hover: #f1f5f9;
+    --tree-selected: #eff6ff;
+    --tree-selected-line: #3b82f6;
 }
 
-.dark .file-card {
-    background: #1f2937;
-    color: white;
+/* 树节点容器 */
+.tree-node {
+    position: relative;
+}
+
+/* 文件夹标题行：指示器 + 名称 + 属性标签 + 操作按钮 */
+.tree-folder-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--tree-title-bg);
+    border: 1px solid var(--tree-title-border);
+    border-left: 3px solid var(--tree-title-border);
+    border-radius: 10px;
+    padding: 9px 12px;
+    margin: 6px 0;
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+        background .15s ease,
+        border-color .15s ease,
+        box-shadow .15s ease;
+}
+
+.tree-folder-title:hover {
+    background: var(--tree-title-hover);
+    box-shadow: 0 1px 4px rgba(15, 23, 42, .06);
+}
+
+/* 选中（当前目录）：左侧蓝色强调条 + 浅蓝底 */
+.tree-folder-title.folder-selected {
+    background: var(--tree-selected);
+    border-left-color: var(--tree-selected-line);
+}
+
+/* 折叠指示器：▾ 可旋转，折叠时旋转 -90° 指向右 */
+.tree-toggle-indicator {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    flex: 0 0 18px;
+    font-size: 13px;
+    line-height: 1;
+    color: #64748b;
+    transition: transform .18s ease;
+}
+
+/* 文件夹名：占满剩余宽度，超长省略 */
+.tree-folder-name {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: .1px;
+}
+
+/* 折叠态：指示器指向右 + 隐藏内容 */
+.tree-node.collapsed > .tree-folder-title .tree-toggle-indicator {
+    transform: rotate(-90deg);
+}
+
+.tree-node.collapsed > .node-content {
+    display: none;
+}
+
+/* 内容包裹区：左侧层级竖线 + 固定缩进（递归叠加形成树） */
+.node-content {
+    position: relative;
+    margin-left: var(--tree-indent);
+    padding: 2px 0 4px;
+    padding-left: 12px;
+    /* border-left: 2px solid var(--tree-line); */
+}
+
+/* 文件行（树内）：图标 + 名称 + 属性 + 操作，悬停高亮 */
+.file-item.tree-file {
+    padding: 5px 8px;
+    border-radius: 8px;
+    transition: background .12s ease;
+}
+
+.file-item.tree-file:hover {
+    background: #f8fafc;
+}
+
+/* 文件操作按钮：默认弱化，悬停行时浮现，减少视觉噪音 */
+.file-item.tree-file .file-actions {
+    opacity: .55;
+}
+
+.file-item.tree-file:hover .file-actions {
+    opacity: 1;
+}
+
+/* 文件夹操作按钮：默认弱化，悬停标题时浮现 */
+.tree-folder-title .folder-actions {
+    opacity: .45;
+}
+
+.tree-folder-title:hover .folder-actions {
+    opacity: 1;
+}
+
+/* 空库占位提示 */
+.empty-tip {
+    color: #94a3b8;
+    padding: 28px 16px;
+    text-align: center;
+    font-size: 14px;
 }
 
 
-/* 上传区域 */
+/* ---------- 上传 / 新建文件夹工具栏 ---------- */
 .toolbar-card {
     background: white;
     padding: 16px;
@@ -335,7 +466,7 @@ body {
 
 }
 
-/* 每一行 */
+/* 工具栏每行：左输入框 + 右按钮（固定 100px 宽） */
 .toolbar-row {
     display: grid;
     grid-template-columns: 1fr 100px;
@@ -348,17 +479,10 @@ body {
     margin-bottom: 0;
 }
 
-/* 标签 */
 
-.folder-label {
-    width: 80px;
-    font-weight: 600;
-}
-
-
-/* ===================== */
-/* Share Manager */
-/* ===================== */
+/* =========================================================================
+   共享管理页面
+   ========================================================================= */
 
 .share-header {
     display: flex;
@@ -367,6 +491,7 @@ body {
     margin-bottom: 20px;
 }
 
+/* 共享总数计数徽章 */
 .share-count {
     background: #e5e7eb;
     padding: 6px 12px;
@@ -385,7 +510,7 @@ body {
         0 2px 8px rgba(0, 0, 0, 0.06);
 }
 
-/* 顶部 */
+/* 卡片顶部：ID + 状态徽章 */
 .share-card-top {
     display: flex;
     justify-content: space-between;
@@ -405,6 +530,7 @@ body {
     font-weight: 600;
 }
 
+/* 有效（绿）/ 已过期（红） */
 .share-active {
     background: #dcfce7;
     color: #166534;
@@ -415,7 +541,7 @@ body {
     color: #991b1b;
 }
 
-/* 文件路径 */
+/* 共享路径 */
 .share-path {
     font-size: 15px;
     font-weight: 500;
@@ -423,7 +549,7 @@ body {
     word-break: break-all;
 }
 
-/* 信息 */
+/* 信息标签行 */
 .share-meta-row {
     display: flex;
     flex-wrap: wrap;
@@ -441,16 +567,16 @@ body {
     white-space: nowrap;
 }
 
-/* 按钮 */
+/* 操作按钮组 */
 
 .share-actions {
     display: flex;
     gap: 8px;
 }
 
-/* ===================== */
-/* 用户管理页面 */
-/* ===================== */
+/* =========================================================================
+   用户管理页面
+   ========================================================================= */
 
 /* 新增用户区域 */
 #userManagerPage .card {
@@ -475,7 +601,7 @@ body {
     color: white;
 }
 
-/* 表格行 */
+/* 表格行悬停 */
 #userManagerPage tbody tr:hover {
     background: #f3f4f6;
 }
@@ -497,15 +623,17 @@ body {
     background: #15803d;
 }
 
-/* ===================== */
-/* Dark Mode */
-/* ===================== */
+/* =========================================================================
+   深色模式（body.dark 由 toggleDarkMode 切换，并持久化到 localStorage）
+   约定：深色变量统一使用 Slate 色阶（#0f172a / #1e293b / #334155 / #475569）
+   ========================================================================= */
 
 body.dark {
     background: #0f172a;
     color: #f8fafc;
 }
 
+/* 当前目录选择器 */
 body.dark .current-folder {
     background: #1e293b;
     color: #f8fafc;
@@ -561,6 +689,31 @@ body.dark .folder-tag {
     background: #1e293b;
     border: 1px solid #475569;
     color: #cbd5e1;
+}
+
+/* 树节点（深色）：通过覆盖 CSS 变量统一切换，保持深浅一致逻辑 */
+body.dark {
+    --tree-line: #334155;
+    --tree-title-bg: #1e293b;
+    --tree-title-border: #334155;
+    --tree-title-hover: #273449;
+    --tree-selected: #1e3a5f;
+}
+
+body.dark .tree-folder-title {
+    color: #f8fafc;
+}
+
+body.dark .tree-toggle-indicator {
+    color: #94a3b8;
+}
+
+body.dark .file-item.tree-file:hover {
+    background: #1e293b;
+}
+
+body.dark .empty-tip {
+    color: #64748b;
 }
 
 /* 文件 */
@@ -715,10 +868,7 @@ body.dark .toolbar-card {
     border: 1px solid #334155;
 }
 
-body.dark .folder-label {
-    color: #f8fafc;
-}
-
+/* 移动端导航与顶栏 */
 body.dark .mobile-nav {
     background: #1e293b;
     border-top: 1px solid #334155;
@@ -743,10 +893,11 @@ body.dark .mobile-theme-btn {
 }
 
 
-/* ===================== */
-/* Mobile */
-/* ===================== */
+/* =========================================================================
+   移动端适配（≤1024px：隐藏侧边栏，显示顶栏 + 底部导航）
+   ========================================================================= */
 
+/* 桌面端默认隐藏，移动端再显示 */
 .mobile-nav {
     display: none;
 }
@@ -755,12 +906,14 @@ body.dark .mobile-theme-btn {
     display: none;
 }
 
-@media (max-width:768px) {
+@media (max-width:1024px) {
 
+    /* 隐藏桌面侧边栏，改用底部导航 */
     .sidebar {
         display: none;
     }
 
+    /* 移动端顶栏：吸顶 + 站点名/主题/当前用户 */
     .mobile-header {
         display: block;
         background: white;
@@ -790,6 +943,7 @@ body.dark .mobile-theme-btn {
         color: #64748b;
     }
 
+    /* 移动端主题切换按钮（圆形） */
     .mobile-theme-btn {
         width: 36px;
         height: 36px;
@@ -799,12 +953,14 @@ body.dark .mobile-theme-btn {
         cursor: pointer;
     }
 
+    /* 内容区去侧边栏偏移，底部预留导航高度 */
     .content {
         margin-left: 0;
         padding: 12px;
         padding-bottom: 200px;
     }
 
+    /* 文件夹卡片：标题/属性/操作换行堆叠 */
     .folder-title {
         flex-wrap: wrap;
     }
@@ -821,7 +977,7 @@ body.dark .mobile-theme-btn {
         margin-top: 8px;
     }
 
-
+    /* 文件行：纵向堆叠（第1行文件名 → 第2行属性 → 第3行操作按钮，信息在按钮上方） */
     .file-item {
         flex-direction: column;
         align-items: flex-start;
@@ -829,7 +985,7 @@ body.dark .mobile-theme-btn {
 
     .file-meta {
         width: 100%;
-        margin-top: 6px;
+        margin-top: 4px;
     }
 
     .file-actions {
@@ -840,6 +996,7 @@ body.dark .mobile-theme-btn {
         flex-wrap: wrap;
     }
 
+    /* 移动端底部固定导航 */
     .mobile-nav {
         display: flex;
         position: fixed;
@@ -868,4 +1025,47 @@ body.dark .mobile-theme-btn {
         font-size: 12px;
     }
 
+    /* 移动端树状结构：收窄层级缩进，标题/文件行纵向适配 */
+    :root {
+        --tree-indent: 14px;
+    }
+
+    /* 文件夹行：纵向三行堆叠（第1行名字+指示器 → 第2行属性信息 → 第3行操作按钮，信息在按钮上方） */
+    .tree-folder-title {
+        flex-wrap: wrap;
+        row-gap: 6px;
+    }
+
+    .tree-folder-title .folder-meta {
+        order: 3;
+        flex-basis: 100%;
+    }
+
+    /* 操作按钮独占第3行（信息在其上方），靠右显示 */
+    .tree-folder-title .folder-actions {
+        order: 4;
+        flex-basis: 100%;
+        justify-content: flex-end;
+        opacity: 1;
+        margin-left: 0;
+        margin-top: 2px;
+    }
+
+    /* 文件行：属性（大小/类型/修改时间）收进一行，排在操作按钮上方 */
+    .file-item.tree-file .file-meta {
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 12px;
+        margin-top: 4px;
+        margin-right: 0;
+        font-size: 12px;
+    }
+
+    /* 文件行操作按钮：整行靠右 */
+    .file-item.tree-file .file-actions {
+        width: 100%;
+        justify-content: flex-end;
+        opacity: 1;
+        margin-top: 8px;
+    }
 }
