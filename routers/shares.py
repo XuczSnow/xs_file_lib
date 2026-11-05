@@ -1,38 +1,33 @@
-"""共享链接：创建、校验、访问信息、下载、访问日志、视频流、二维码。"""
+"""共享链接管理：创建、落地页、删除、统一链接列表、二维码、兼容接口。
+
+A2 拆分后的职责（路由路径与前端调用保持不变）：
+- 创建/删除/列表：/api/share、/api/delete-share、/api/delete-link、
+  /api/links、/api/shares（兼容）
+- 落地页：/share/{id}、/share/video/{id}/{file}
+- 二维码：/api/qr/{id}（完整 URL + 可配置样式）
+
+媒体访问（内容/下载/校验/视频流）在 routers/share_media.py；
+访问信息/日志/看板在 routers/share_log.py。
+共享 helper（find_share / share_unlocked / video_content_type）位于 utils/share.py。
+"""
 import io
-import os
 import uuid
 from datetime import datetime, timedelta
 
 import qrcode
 
 from fastapi import APIRouter, Form, Request, HTTPException
-from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, Response
 
-from utils import storage, filetree, security
+from utils import storage
+from utils import share as share_util
 
 router = APIRouter(tags=["shares"])
 
 
 def _find_share(share_id: str):
-    """按 ID 查共享记录；不存在返回 None（替代原直接下标取值的 KeyError）。"""
-    shares = storage.load_shares()
-    return shares.get(share_id)
-
-
-def _share_unlocked(share: dict, share_id: str, password: str = "", access: str = "") -> bool:
-    """共享访问闸门：
-
-    - 未设密码：放行；
-    - 设置了密码：需携带正确的短期访问令牌（access，由 /api/share-check 校验
-      密码后签发），或本次请求带上正确明文密码。
-      用令牌而非把明文密码写进下载 URL，避免密码进入访问日志/分享链接。
-    """
-    if not share.get("password"):
-        return True
-    if access and security.verify_share_access(access, share_id):
-        return True
-    return security.verify_password(share["password"], password or "")
+    """委托 utils.share（本模块仅保留别名供内部复用）。"""
+    return share_util.find_share(share_id)
 
 
 @router.post("/api/share")
@@ -81,37 +76,155 @@ def create_share(
 
 # ---- 二维码：对共享/上传链接生成 PNG（管理页"显示二维码"按钮用）----
 
-def _link_public_url(link_id: str, record: dict) -> str:
-    """按 kind 构造链接的公开访问 URL（不含主机，前端可补全 origin）。"""
-    if record.get("kind") == "upload":
-        return "/upload/" + link_id
-    return "/share/" + link_id
+# 二维码样式默认值（可在 config/config.json 的 qr_style 中覆盖）
+_QR_STYLE_DEFAULT = {
+    "fg_color": "000000",
+    "bg_color": "FFFFFF",
+    "error_correction": "M",  # L / M / Q / H
+    "box_size": 8,
+    "border": 2,
+}
 
 
-@router.get("/api/qr/{link_id}")
-def link_qr(link_id: str):
-    """返回指定链接（共享或访客上传）的二维码 PNG。
+def _qr_style() -> dict:
+    """取二维码样式（设置页可配），与默认值合并。"""
+    style = dict(_QR_STYLE_DEFAULT)
+    try:
+        user_style = storage.load_config().get("qr_style") or {}
+        if isinstance(user_style, dict):
+            style.update(user_style)
+    except Exception:
+        pass
+    return style
 
-    仅编码"本站该链接的公开路径"，避免把任意 URL 编码进二维码。
-    前端拿到 PNG 后可叠加在链接卡片上；无效链接返回 404。
+
+def _public_base_url(request: Request) -> str:
+    """二维码编码的完整 URL 基址（协议 + host）。
+
+    优先级：
+      1. 设置里的 public_base_url（手动配置，如 https://files.example.com）；
+      2. 反向代理头 X-Forwarded-Proto + X-Forwarded-Host（Cloudflare/nginx）；
+      3. 当前请求的 scheme + host。
+    这样公网扫码能打开真实可访问地址，而非 localhost。
     """
-    record = storage.load_links().get(link_id)
-    if record is None:
-        raise HTTPException(status_code=404, detail="链接不存在")
+    cfg = storage.load_config()
+    base = (cfg.get("public_base_url") or "").strip()
+    if base:
+        return base.rstrip("/")
+    fwd_host = request.headers.get("X-Forwarded-Host") or request.headers.get("Host")
+    if not fwd_host:
+        fwd_host = request.headers.get("Host") or "localhost"
+    proto = request.headers.get("X-Forwarded-Proto", "http").split(",")[0].strip()
+    return f"{proto}://{fwd_host}"
 
-    path = _link_public_url(link_id, record)
-    img = qrcode.make(path)
+
+def _link_public_url(link_id: str, record: dict, request: Request) -> str:
+    """构造链接的完整公开 URL（含基址）。"""
+    path = "/upload/" + link_id if record.get("kind") == "upload" else "/share/" + link_id
+    return _public_base_url(request) + path
+
+
+# 预览二维码的示例内容：编码本项目的 git 库地址（设置页配色实时预览用，
+# 与具体某条共享链接无关，仅为演示"该配色下二维码长什么样"）
+QR_PREVIEW_SAMPLE = "https://github.com/XuczSnow/xs_file_lib"
+
+# qrcode 库的纠错等级是四个独立常量（无 ERROR_CORRECT 字典）
+_EC_MAP = {
+    "L": qrcode.constants.ERROR_CORRECT_L,
+    "M": qrcode.constants.ERROR_CORRECT_M,
+    "Q": qrcode.constants.ERROR_CORRECT_Q,
+    "H": qrcode.constants.ERROR_CORRECT_H,
+}
+
+
+def _render_qr_png(content: str, style: dict) -> bytes:
+    """把 content 渲染成带自定义前景/背景色的二维码 PNG 字节流。
+
+    默认黑白直接输出；非默认配色时用 Pillow 把黑像素重映射为 fg、
+    白像素重映射为 bg（Image.composite + 亮度遮罩，比逐像素更快且无损）。
+    """
+    ec = _EC_MAP.get(style.get("error_correction", "M"),
+                     qrcode.constants.ERROR_CORRECT_M)
+    img = qrcode.QRCode(
+        error_correction=ec,
+        box_size=int(style.get("box_size", 8)),
+        border=int(style.get("border", 2)),
+    )
+    img.add_data(content)
+    img.make(fit=True)
+    qr_img = img.make_image()
+
+    fg = (style.get("fg_color") or "000000").lstrip("#")
+    bg = (style.get("bg_color") or "FFFFFF").lstrip("#")
+    if (fg, bg) != ("000000", "FFFFFF"):
+        from PIL import Image
+
+        def _hex_rgb(color: str, default):
+            try:
+                v = int(color, 16)
+                if 0 <= v <= 0xFFFFFF:
+                    return ((v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF)
+            except (ValueError, TypeError):
+                pass
+            return default
+
+        fg_rgb = _hex_rgb(fg, (0, 0, 0))
+        bg_rgb = _hex_rgb(bg, (255, 255, 255))
+        gray = qr_img.convert("L")  # 0=黑 255=白
+        dark = Image.new("RGB", gray.size, fg_rgb)
+        light = Image.new("RGB", gray.size, bg_rgb)
+        qr_img = Image.composite(dark, light, gray).convert("RGBA")
+
     buf = io.BytesIO()
-    img.save(buf, format="PNG")
+    qr_img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+@router.get("/api/qr-preview")
+def qr_preview(fg: str = "000000", bg: str = "FFFFFF", ec: str = "M", box: int = 8):
+    """配色实时预览：渲染一张编码 git 库地址的示例二维码 PNG。
+
+    供设置页"二维码样式"区在切换配色下拉时即时刷新预览（无需先保存设置）；
+    颜色/纠错/尺寸由 query 传入，content 固定为 QR_PREVIEW_SAMPLE。
+    """
+    style = dict(_QR_STYLE_DEFAULT)
+    style["fg_color"] = (fg or "000000").lstrip("#")
+    style["bg_color"] = (bg or "FFFFFF").lstrip("#")
+    style["error_correction"] = ec if ec in _EC_MAP else "M"
+    try:
+        style["box_size"] = int(box)
+    except (ValueError, TypeError):
+        pass
     return Response(
-        content=buf.getvalue(),
+        content=_render_qr_png(QR_PREVIEW_SAMPLE, style),
         media_type="image/png",
         headers={"Cache-Control": "no-store"},
     )
 
 
+@router.get("/api/qr/{link_id}")
+def link_qr(link_id: str, request: Request):
+    """返回指定链接（共享或访客上传）的二维码 PNG（编码完整 URL，样式可配）。
+
+    无效链接返回 404；二维码样式（颜色/纠错/尺寸/边距）由设置页配置。
+    """
+    record = storage.load_links().get(link_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="链接不存在")
+
+    full_url = _link_public_url(link_id, record, request)
+    return Response(
+        content=_render_qr_png(full_url, _qr_style()),
+        media_type="image/png",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+# ---- 共享落地页 ----
+
 @router.get("/share/{share_id}")
 def access_share(share_id: str):
+    """共享落地页：存在则返回 share.html，否则返回 JSON 提示。"""
     if _find_share(share_id) is None:
         return {"success": False}
     return FileResponse("static/share.html")
@@ -122,135 +235,7 @@ def share_video_page(share_id: str, filename: str):
     return FileResponse("static/share_video.html")
 
 
-@router.get("/api/share-content/{share_id}")
-def share_content(share_id: str, password: str = "", access: str = ""):
-    share = _find_share(share_id)
-    if share is None:
-        return {"success": False}
-
-    # 密码闸门：设了密码的共享需携带 access 令牌（/api/share-check 校验后签发）或正确密码
-    if not _share_unlocked(share, share_id, password, access):
-        return {"success": False, "message": "密码错误"}
-
-    # 过期校验（与 /api/share-download 一致）
-    expire_time = datetime.strptime(share["expire"], "%Y-%m-%d %H:%M:%S")
-    if datetime.now() > expire_time:
-        return {"success": False, "message": "共享已过期"}
-
-    # 存储的共享路径本身也做一次 safe_join，防止历史数据里的脏路径越界
-    base = os.path.abspath(storage.UPLOAD_DIR)
-    shared_dir = security.safe_join(base, share["path"]) if share.get("path") else base
-
-    if share["type"] == "file":
-        # 文件类型：拼 UPLOAD_DIR 前缀取 size；路径守卫 + 存在性校验
-        full_path = shared_dir if os.path.isfile(shared_dir) else None
-        if full_path is None:
-            return {"success": False, "message": "文件不存在"}
-        return {
-            "success": True,
-            "type": "file",
-            "share_id": share_id,
-            "path": share["path"],
-            "name": os.path.basename(share["path"]),
-            "files": [{
-                "name": os.path.basename(share["path"]),
-                "size": os.path.getsize(full_path),
-            }],
-        }
-
-    if shared_dir is None or not os.path.isdir(shared_dir):
-        return {"success": False, "message": "目录不存在"}
-
-    # 树状结构：共享子目录为遍历起点，文件 path 仍相对 UPLOAD_DIR
-    tree = filetree.build_file_tree(storage.UPLOAD_DIR, start_dir=shared_dir)
-    # 全层级扁平文件列表（相册模式收集所有图片/视频用）
-    all_files = filetree.flatten_files(tree)
-
-    return {
-        "success": True,
-        "type": "folder",
-        "share_mode": share.get("share_mode", "normal"),
-        "share_id": share_id,
-        "path": share["path"],
-        "name": share["path"],
-        "tree": tree,
-        "files": all_files,
-    }
-
-
-@router.get("/api/share-folder-download/{share_id}/{filename:path}")
-def share_folder_download(share_id: str, filename: str, password: str = "", access: str = ""):
-    """下载共享文件夹内的单个文件。
-
-    安全加固：
-    - 过期共享直接拒绝（与 /api/share-download 保持一致）；
-    - 密码闸门：设了密码需携带 access 令牌或正确密码；
-    - 用 safe_join 校验 filename 不逃出共享目录（阻止 `../` 路径穿越）。
-    """
-    share = _find_share(share_id)
-    if share is None:
-        return {"success": False, "message": "共享不存在"}
-
-    if not _share_unlocked(share, share_id, password, access):
-        return {"success": False, "message": "密码错误"}
-
-    # 过期校验：与原 share_download 一致
-    expire_time = datetime.strptime(share["expire"], "%Y-%m-%d %H:%M:%S")
-    if datetime.now() > expire_time:
-        return {"success": False, "message": "共享已过期"}
-
-    share_dir = security.safe_join(storage.UPLOAD_DIR, share["path"])
-    file_path = security.safe_join(share_dir, filename)
-    if file_path is None or not os.path.isfile(file_path):
-        return {"success": False, "message": "文件不存在"}
-    return FileResponse(file_path)
-
-
-@router.post("/api/share-check")
-def share_check(share_id: str = Form(...), password: str = Form("")):
-    """校验共享密码。成功后签发短期访问令牌，后续取内容/下载/播放都带它。
-
-    兼容 bcrypt 与旧 SHA-256 存量哈希（security.verify_password）。
-    """
-    share = _find_share(share_id)
-    if share is None:
-        return {"success": False, "message": "共享不存在"}
-
-    if share.get("password", "") == "":
-        return {"success": True, "access_token": security.issue_share_access(share_id)}
-
-    if not security.verify_password(share["password"], password):
-        return {"success": False, "message": "密码错误"}
-
-    return {"success": True, "access_token": security.issue_share_access(share_id)}
-
-
-@router.get("/api/share-download/{share_id}")
-def share_download(share_id: str, password: str = "", access: str = ""):
-    """下载单文件共享。设置了密码的需携带 access 令牌或正确密码。"""
-    share = _find_share(share_id)
-    if share is None:
-        return {"success": False, "message": "共享不存在"}
-
-    if not _share_unlocked(share, share_id, password, access):
-        return {"success": False, "message": "密码错误"}
-
-    expire_time = datetime.strptime(
-        share["expire"], "%Y-%m-%d %H:%M:%S"
-    )
-    if datetime.now() > expire_time:
-        return {"success": False, "message": "共享已过期"}
-
-    # 路径守卫 + 存在性校验
-    file_path = security.safe_join(storage.UPLOAD_DIR, share["path"])
-    if file_path is None or not os.path.isfile(file_path):
-        return {"success": False, "message": "文件不存在"}
-
-    return FileResponse(
-        file_path,
-        filename=os.path.basename(share["path"]),
-    )
-
+# ---- 列表与删除（含旧接口兼容）----
 
 @router.get("/api/shares")
 def get_shares():
@@ -289,151 +274,3 @@ def delete_link(link_id: str = Form(...)):
         del links[link_id]
     storage.save_links(links)
     return {"success": True}
-
-
-@router.get("/api/share-info/{share_id}")
-def share_info(share_id: str, request: Request):
-    shares = storage.load_shares()
-    if share_id not in shares:
-        return {"success": False, "message": "共享不存在"}
-
-    share = shares[share_id]
-    share["view_count"] = share.get("view_count", 0) + 1
-    storage.save_shares(shares)
-
-    storage.write_share_access_log({
-        "share_id": share_id,
-        "path": share["path"],
-        "visit_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "real_ip": request.headers.get("CF-Connecting-IP", ""),
-        "ip": request.client.host,
-        "user_agent": request.headers.get("User-Agent", ""),
-    })
-
-    expired = datetime.now() > datetime.strptime(
-        share["expire"], "%Y-%m-%d %H:%M:%S"
-    )
-
-    return {
-        "success": True,
-        "type": share.get("type", "file"),
-        "share_mode": share.get("share_mode", "normal"),
-        "name": share["path"],
-        "expire": share["expire"],
-        "expired": expired,
-        "has_password": bool(share.get("password", "")),
-    }
-
-
-@router.get("/api/share-access-log/{share_id}")
-def get_share_access_log(share_id: str):
-    logs = storage.load_json(storage.ACCESS_LOG_CONF, [])
-    return [item for item in logs if item.get("share_id") == share_id]
-
-
-# 视频 Content-Type 按扩展名推断（弱服务器 + 浏览器解码正确性）；未知类型给通用值
-_VIDEO_CONTENT_TYPES = {
-    "mp4": "video/mp4", "m4v": "video/mp4",
-    "webm": "video/webm", "ogv": "video/ogg",
-    "mov": "video/quicktime", "mkv": "video/x-matroska",
-    "avi": "video/x-msvideo", "ts": "video/mp2t",
-}
-
-
-def _video_content_type(filename: str) -> str:
-    ext = os.path.splitext(filename)[1].lstrip(".").lower()
-    return _VIDEO_CONTENT_TYPES.get(ext, "application/octet-stream")
-
-
-@router.get("/api/video-stream/{share_id}/{filename:path}")
-def share_video_stream(share_id: str, filename: str, request: Request,
-                       password: str = "", access: str = ""):
-    """支持 Range 的视频流。
-
-    P0 优化（弱服务器 / Cloudflare 场景）：
-    - 同步 def：FastAPI 放线程池执行，慢客户端不再阻塞事件循环
-      （原 async def + 同步 open/read 会卡死其他请求）；
-    - 4MB 分块（原 1MB）：减少系统调用次数；
-    - Content-Type 按扩展名推断（原写死 video/mp4，webm/mov 会解码异常）；
-    - ETag + Cache-Control：公开流 s-maxage=3600（让 CF 边缘缓存整对象、
-      拖动/回看由边缘合成 206）；带 access 密码令牌的流 no-store
-      （防共享过期后缓存仍可访问，防令牌进入缓存键）。
-
-    注意：{filename:path} 到达处理器前已被 ASGI 解码，不要再 unquote。
-    密码闸门：设了密码的共享需 URL 携带 access 令牌（?access=xxx）。
-    """
-    share = _find_share(share_id)
-    if share is None:
-        return JSONResponse({"success": False}, status_code=404)
-
-    # 密码闸门（视频流是直链，无法弹框收密码，故用 share-check 签发的 access 令牌）
-    if not _share_unlocked(share, share_id, password, access):
-        return JSONResponse({"success": False, "message": "密码错误"}, status_code=403)
-
-    # 过期校验 + 路径穿越守卫（防止 `../` 逃出共享目录）
-    expire_time = datetime.strptime(share["expire"], "%Y-%m-%d %H:%M:%S")
-    if datetime.now() > expire_time:
-        return JSONResponse({"success": False, "message": "共享已过期"}, status_code=410)
-
-    share_dir = security.safe_join(storage.UPLOAD_DIR, share["path"])
-    video_path = security.safe_join(share_dir, filename)
-    if video_path is None or not os.path.isfile(video_path):
-        return JSONResponse({"success": False}, status_code=404)
-
-    file_size = os.path.getsize(video_path)
-    mtime = int(os.path.getmtime(video_path))
-    media_type = _video_content_type(filename)
-
-    # 缓存头：密码共享（带 access 令牌）不缓存；公开共享边缘缓存 1 小时
-    cache_ctl = "no-store" if (access or password) else "public, s-maxage=3600, max-age=3600"
-    etag = f'"{share_id}-{file_size}-{mtime}"'
-    common_headers = {
-        "Accept-Ranges": "bytes",
-        "Cache-Control": cache_ctl,
-        "ETag": etag,
-    }
-
-    # 协商 ETag（If-None-Match 命中直接 304，省带宽）
-    if request.headers.get("if-none-match") == etag:
-        return Response(status_code=304, headers=common_headers)
-
-    range_header = request.headers.get("range")
-    if range_header:
-        try:
-            start_s, end_s = range_header.replace("bytes=", "").split("-")
-            start = int(start_s) if start_s else 0
-            end = int(end_s) if end_s else file_size - 1
-        except ValueError:
-            return JSONResponse({"success": False}, status_code=416)
-        end = min(end, file_size - 1)
-        if start > end or start >= file_size:
-            return Response(status_code=416, headers={
-                **common_headers,
-                "Content-Range": f"bytes */{file_size}",
-            })
-        length = end - start + 1
-
-        def iter_range():
-            # 4MB 分块（原 1MB）：弱服务器下减少系统调用
-            with open(video_path, "rb") as f:
-                f.seek(start)
-                remaining = length
-                while remaining > 0:
-                    chunk = f.read(min(4 * 1024 * 1024, remaining))
-                    if not chunk:
-                        break
-                    yield chunk
-                    remaining -= len(chunk)
-
-        return StreamingResponse(
-            iter_range(),
-            status_code=206,
-            media_type=media_type,
-            headers={
-                **common_headers,
-                "Content-Range": f"bytes {start}-{end}/{file_size}",
-                "Content-Length": str(length),
-            },
-        )
-
-    return FileResponse(video_path, media_type=media_type, headers=common_headers)

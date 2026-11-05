@@ -13,8 +13,8 @@
     <link href="./static/vendor/bootstrap.min.css" rel="stylesheet">
     <link href="./static/vendor/bootstrap-icons.min.css" rel="stylesheet">
     <!-- 自有样式：主界面 + 预览灯箱 -->
-    <link href="./static/style.css" rel="stylesheet">
-    <link href="./static/preview.css" rel="stylesheet">
+    <link href="./static/css/style.css" rel="stylesheet">
+    <link href="./static/css/preview.css" rel="stylesheet">
 </head>
 
 <body>
@@ -192,24 +192,78 @@
                 </div>
             </div>
 
-            <!-- ④ 系统设置面板（站点名称 / 文件根目录） -->
+            <!-- ④ 系统设置面板（站点信息 / 二维码样式；数据看板已拆到独立页 /dashboard） -->
             <div id="settingManagerPage" style="display:none;">
-                <h3>⚙️ 系统设置</h3>
-                <div class="card p-3">
-                    <div class="mb-3">
-                        <label>系统名称</label>
-                        <input id="siteName" class="form-control">
-                    </div>
-
-                    <div class="mb-3">
-                        <label>文件根目录</label>
-                        <input id="rootPath" class="form-control">
+                <div class="setting-page-head">
+                    <h3 class="mb-0">⚙️ 系统设置</h3>
+                    <div class="setting-page-actions">
+                        <a href="/dashboard" target="_blank" class="btn btn-outline-primary btn-sm" id="openDashboardBtn">
+                            📊 访问数据看板
+                        </a>
+                        <button class="btn btn-primary btn-sm" onclick="saveSettings()">
+                            💾 保存设置
+                        </button>
                     </div>
                 </div>
-                <hr>
-                <button class="btn btn-primary" onclick="saveSettings()">
-                    保存
-                </button>
+
+                <!-- 站点信息 -->
+                <div class="card p-3 setting-card">
+                    <div class="setting-card-title"><i class="bi bi-gear"></i> 站点信息</div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="setting-label">系统名称</label>
+                            <input id="siteName" class="form-control">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="setting-label">文件根目录</label>
+                            <input id="rootPath" class="form-control">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="setting-label">公网访问地址（可选）</label>
+                            <input id="publicBaseUrl" class="form-control"
+                                   placeholder="https://files.example.com（二维码将编码完整 URL）">
+                            <div class="form-text">留空时按当前请求 / X-Forwarded 头推断；填写后二维码固定编码该前缀。</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="setting-label">zip 缓存容量上限（GB）</label>
+                            <input id="cacheMaxGb" type="number" min="0" max="1024" class="form-control">
+                            <div class="form-text">cache/zips 目录总量超过此值时按最旧优先自动裁剪；填 0 表示不限制。默认 10。</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 二维码样式：配色预设下拉 + 纠错等级 + 模块尺寸；右上角实时真实二维码预览（编码 git 库地址） -->
+                <div class="card p-3 setting-card">
+                    <div class="setting-card-title"><i class="bi bi-qr-code-scan"></i> 二维码样式
+                        <span id="qrPreviewWrap" class="setting-card-preview" title="当前配色下二维码预览（编码 git 库地址示例）">
+                            <img id="qrPreview" alt="二维码配色预览">
+                        </span>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="setting-label">配色方案（前景 / 背景 成对高级色板）</label>
+                            <select id="qrColor" class="form-select"></select>
+                            <div class="form-text">选择一种预设配色，前景与背景色同步生效；右上角二维码实时预览。</div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="row g-3">
+                                <div class="col">
+                                    <label class="setting-label">纠错等级（越高容错越强，图案越密）</label>
+                                    <select id="qrEc" class="form-select">
+                                        <option value="L">L（低）</option>
+                                        <option value="M" selected>M（中，默认）</option>
+                                        <option value="Q">Q（高）</option>
+                                        <option value="H">H（最高）</option>
+                                    </select>
+                                </div>
+                                <div class="col">
+                                    <label class="setting-label">模块尺寸（px，越大图案越大越清晰）</label>
+                                    <input id="qrBox" type="number" min="1" max="32" class="form-control">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
         <!-- 移动端底部导航（桌面端隐藏，≤768px 显示） -->
@@ -364,9 +418,9 @@
     </div>
 
     <!-- 脚本加载顺序：先公共工具 → 业务逻辑 → 预览 → bootstrap（弹窗依赖） -->
-    <script src="./static/common.js"></script>
-    <script src="./static/app.js"></script>
-    <script src="./static/preview.js"></script>
+    <script src="./static/js/common.js"></script>
+    <script src="./static/js/app.js"></script>
+    <script src="./static/js/preview.js"></script>
     <script src="./static/vendor/bootstrap.bundle.min.js"></script>
 </body>
 

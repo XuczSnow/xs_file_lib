@@ -1,0 +1,62 @@
+/* =========================================================================
+   preview.css —— 文件预览灯箱（图片浏览）样式
+   被 index.html 与 share.html 共用，配合 preview.js 的 showCurrentImage
+   渲染 #previewContent 内的灯箱结构。
+   结构：顶部工具栏 → 图片展示区 → 底部下载按钮
+   ========================================================================= */
+
+/* 灯箱整体：纵向堆叠三个区域（工具栏/图片/底部） */
+.lightbox-container {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+/* 顶部工具栏：上一张 | 计数+文件名 | 下一张，三段均匀分布 */
+.lightbox-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* 中央信息列：计数与文件名纵向居中（占满中间空间） */
+.lightbox-info {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    flex: 1;
+}
+
+/* 图片计数（如 3 / 20） */
+.image-counter {
+    font-size: 12px;
+    color: #94a3b8;
+}
+
+/* 当前图片文件名 */
+.image-name {
+    font-weight: 600;
+    margin-top: 4px;
+}
+
+/* 图片展示区：水平垂直居中 */
+.lightbox-image-wrapper {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+/* 缩略图：等比缩放、限高 75vh、点击放大查看原图 */
+.lightbox-image {
+    max-width: 100%;
+    max-height: 75vh;
+    object-fit: contain;
+    border-radius: 12px;
+    cursor: zoom-in;
+}
+
+/* 底部：下载原图按钮（居中） */
+.lightbox-footer {
+    display: flex;
+    justify-content: center;
+}

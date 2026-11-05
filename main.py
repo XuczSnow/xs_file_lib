@@ -24,6 +24,8 @@ from routers import (
     files,
     media,
     settings,
+    share_log,
+    share_media,
     shares,
     upload_links,
     users,
@@ -42,7 +44,9 @@ for router in (
     auth.router,
     users.router,
     files.router,
-    shares.router,
+    shares.router,        # 共享链接 CRUD + 落地页 + 二维码
+    share_media.router,   # 共享内容/下载/密码校验/视频流（A2 拆出）
+    share_log.router,     # 访问信息/日志/看板统计（A2 拆出）
     media.router,
     settings.router,
     upload_links.router,
@@ -73,6 +77,7 @@ _PROTECTED_PREFIXES = (
     "/api/delete-share",
     "/api/create-upload-link",
     "/api/share-access-log",
+    "/api/share-stats",      # 访问数据看板（管理侧，需 token）
 )
 
 # 精确匹配（前缀会与公开路由 /api/share-*、/api/upload-* 冲突，故用整段匹配）
@@ -119,6 +124,12 @@ async def require_token(request, call_next):
 @app.get("/")
 def home():
     return FileResponse("static/index.html")
+
+
+@app.get("/dashboard")
+def dashboard_page():
+    """访问数据看板独立页（需 token；页面本身公开，数据接口受保护）。"""
+    return FileResponse("static/dashboard.html")
 
 
 if __name__ == "__main__":

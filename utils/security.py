@@ -11,8 +11,9 @@
 - 密码哈希          bcrypt 优先，存量 SHA-256 记录在下次登录时透明升级。
 
 说明：本项目以 JSON 文件存储、单机运行，故 token 采用带密钥的签名式实现
-（而非标准 JWT/RS256），密钥写死 + 可选 env 覆盖，避免引入额外依赖；
-签名算法可日后平滑替换为 PyJWT。
+（而非标准 JWT/RS256），避免引入额外依赖。
+密钥优先级：环境变量 XS_TOKEN_SECRET > config/secret.key（首次启动
+自动随机生成并持久化，不随代码分发）；签名算法可日后平滑替换为 PyJWT。
 """
 import hashlib
 import hmac
@@ -29,10 +30,25 @@ except Exception:  # pragma: no cover - bcrypt 缺失时退回 SHA-256
     _HAS_BCRYPT = False
 
 # ---- 会话 token ----
-# 令牌密钥：优先环境变量 XS_TOKEN_SECRET，否则用稳定内置值（单机部署可接受）
-_TOKEN_SECRET = os.environ.get("XS_TOKEN_SECRET", "xs-file-lib-secret-key-2024")
+# 令牌密钥：优先环境变量 XS_TOKEN_SECRET（多实例/多机部署时注入同一密钥）；
+# 否则使用 config/secret.key（首次启动随机生成 32 字节并持久化，仅存在于
+# 部署机磁盘、不随代码分发），杜绝"源码里写死密钥"导致 token 可离线伪造。
 # 默认有效期 12 小时（秒）
 _TOKEN_TTL = int(os.environ.get("XS_TOKEN_TTL", str(12 * 3600)))
+_SECRET_CACHE = None
+
+
+def _token_secret() -> str:
+    """取令牌密钥（进程内缓存一次）。惰性 import storage 避免循环引用。"""
+    global _SECRET_CACHE
+    if _SECRET_CACHE is None:
+        env_secret = os.environ.get("XS_TOKEN_SECRET")
+        if env_secret:
+            _SECRET_CACHE = env_secret
+        else:
+            from utils import storage
+            _SECRET_CACHE = storage.load_or_create_secret()
+    return _SECRET_CACHE
 
 
 # ==================== 路径穿越守卫 ====================
@@ -128,9 +144,9 @@ def login_succeeded(ip: str):
 # ==================== 会话 token（签名式）====================
 
 def _sign(payload_b64: str) -> str:
-    """对 payload 做 HMAC-SHA256 签名。"""
+    """对 payload 做 HMAC-SHA256 签名（密钥来自 env 或 config/secret.key）。"""
     return hmac.new(
-        _TOKEN_SECRET.encode("utf-8"),
+        _token_secret().encode("utf-8"),
         payload_b64.encode("utf-8"),
         hashlib.sha256,
     ).hexdigest()

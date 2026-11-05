@@ -1,0 +1,324 @@
+/* =========================================================================
+   访问数据看板（dashboard.html）样式
+   与相册/视频播放页统一浅色风格（#f8fafc 底 + 白卡片 + #2563eb 强调），
+   指标卡 + 近 7 天 CSS 柱状图（峰值高亮 + 数值标签）+ 数据表。
+   ========================================================================= */
+:root {
+    --dash-bg: #f8fafc;
+    --dash-card: #ffffff;
+    --dash-line: #e5e7eb;
+    --dash-text: #1e293b;
+    --dash-sub: #64748b;
+    --dash-accent: #2563eb;
+    --dash-accent-soft: rgba(37, 99, 235, .08);
+}
+
+* { box-sizing: border-box; }
+
+body.dash-body {
+    background: var(--dash-bg);
+    color: var(--dash-text);
+    margin: 0;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+}
+
+/* ---------- 顶栏 ---------- */
+.dash-topbar {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 24px;
+    background: rgba(255, 255, 255, .92);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--dash-line);
+}
+
+.topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.topbar-icon {
+    font-size: 26px;
+    color: var(--dash-accent);
+}
+
+.topbar-title {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 700;
+}
+
+.topbar-sub {
+    font-size: 12px;
+    color: var(--dash-sub);
+    margin-top: 2px;
+}
+
+.topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}
+
+.topbar-updated {
+    font-size: 12px;
+    color: var(--dash-sub);
+}
+
+/* ---------- 主体容器 ---------- */
+.dash-body-main {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 20px 24px 40px;
+}
+
+.dash-loading,
+.dash-error {
+    max-width: 1100px;
+    margin: 60px auto;
+    padding: 0 24px;
+    text-align: center;
+    color: var(--dash-sub);
+}
+
+.dash-error {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+}
+
+.dash-error .bi {
+    font-size: 40px;
+    color: #94a3b8;
+}
+
+/* ---------- 核心指标卡 ---------- */
+.kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-bottom: 18px;
+}
+
+.kpi-card {
+    background: var(--dash-card);
+    border: 1px solid var(--dash-line);
+    border-radius: 14px;
+    padding: 16px 18px;
+    box-shadow: 0 4px 16px rgba(15, 23, 42, .04);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    transition: transform .15s ease, box-shadow .15s ease;
+}
+
+.kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(15, 23, 42, .08);
+}
+
+.kpi-icon {
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+}
+
+.kpi-icon i { color: #fff; }
+
+.kpi-icon-blue   { background: #3b82f6; }
+.kpi-icon-teal   { background: #14b8a6; }
+.kpi-icon-violet { background: #8b5cf6; }
+.kpi-icon-amber  { background: #f59e0b; }
+
+.kpi-val {
+    font-size: 30px;
+    font-weight: 800;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+}
+
+.kpi-label {
+    font-size: 13px;
+    color: var(--dash-sub);
+}
+
+/* ---------- 通用面板 ---------- */
+.panel {
+    background: var(--dash-card);
+    border: 1px solid var(--dash-line);
+    border-radius: 14px;
+    padding: 18px 20px;
+    box-shadow: 0 4px 16px rgba(15, 23, 42, .04);
+    margin-bottom: 18px;
+}
+
+.panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+}
+
+.panel-head h5 {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 700;
+}
+
+.panel-head h5 .bi {
+    color: var(--dash-accent);
+    margin-right: 6px;
+}
+
+.panel-hint {
+    font-size: 12px;
+    color: var(--dash-sub);
+}
+
+.two-col {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+}
+
+.two-col .panel { margin-bottom: 0; }
+
+.table-wrap {
+    max-height: 320px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+}
+
+.dash-table {
+    font-size: 13px;
+}
+
+.dash-table thead th {
+    position: sticky;
+    top: 0;
+    background: #f8fafc;
+    color: var(--dash-sub);
+    font-weight: 600;
+    border-bottom: 1px solid var(--dash-line);
+    font-size: 12px;
+}
+
+.dash-table td {
+    vertical-align: middle;
+    padding: 8px 6px;
+    border-color: #f1f5f9;
+}
+
+.mono {
+    font-family: "Cascadia Code", Consolas, monospace;
+    font-size: 12px;
+    color: var(--dash-text);
+}
+
+/* ---------- 近 7 天柱状图（纯 CSS） ---------- */
+.daily-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 14px;
+    height: 220px;
+    padding: 8px 4px 0;
+}
+
+.bar-col {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    height: 100%;
+}
+
+.bar-val {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--dash-sub);
+    height: 16px;
+    line-height: 16px;
+    font-variant-numeric: tabular-nums;
+}
+
+.bar-track {
+    flex: 1;
+    width: 60%;
+    max-width: 46px;
+    background: #f1f5f9;
+    border-radius: 6px;
+    display: flex;
+    align-items: flex-end;
+    overflow: hidden;
+}
+
+.bar-fill {
+    width: 100%;
+    background: linear-gradient(180deg, #60a5fa 0%, #2563eb 100%);
+    border-radius: 6px 6px 0 0;
+    transition: height .5s ease;
+    min-height: 0;
+}
+
+/* 峰值柱：换用强调色 + 顶部指示 */
+.bar-peak .bar-fill {
+    background: linear-gradient(180deg, #fbbf24 0%, #f59e0b 100%);
+}
+
+.bar-peak .bar-val {
+    color: #f59e0b;
+}
+
+/* 无访问日：柱体淡到近乎不可见 */
+.bar-col:not(.bar-has) .bar-fill {
+    height: 0 !important;
+}
+
+.bar-x {
+    font-size: 11px;
+    color: var(--dash-sub);
+    white-space: nowrap;
+}
+
+/* ---------- 页脚 ---------- */
+.dash-footer {
+    text-align: center;
+    font-size: 12px;
+    color: var(--dash-sub);
+    padding-top: 8px;
+}
+
+.dash-footer a {
+    color: var(--dash-accent);
+    text-decoration: none;
+    font-weight: 600;
+}
+
+.dash-footer a:hover { text-decoration: underline; }
+
+/* ---------- 响应式 ---------- */
+@media (max-width: 900px) {
+    .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+    .two-col { grid-template-columns: 1fr; }
+    .two-col .panel { margin-bottom: 18px; }
+}
+
+@media (max-width: 520px) {
+    .dash-topbar { flex-direction: column; align-items: flex-start; }
+    .topbar-right { width: 100%; justify-content: space-between; }
+    .daily-chart { gap: 6px; height: 180px; }
+    .bar-col:not(.bar-has) .bar-val { visibility: hidden; }
+}

@@ -39,7 +39,7 @@ def _image_proxy_from_source(source: str, filepath: str, short_side: int):
     """
     base_name = os.path.splitext(filepath)[0]
     thumb_root = os.path.join(
-        storage.THUMB_DIR, f".img_thumbs_{short_side}"
+        storage.THUMB_DIR, f"img_{short_side}"
     )
     thumb_path = os.path.join(thumb_root, base_name + ".jpg")
 
@@ -87,7 +87,7 @@ def video_thumbnail(filepath: str):
     if source is None or not os.path.isfile(source):
         raise HTTPException(status_code=404, detail="视频不存在")
 
-    thumb_root = os.path.join(storage.THUMB_DIR, ".video_thumbs")
+    thumb_root = os.path.join(storage.THUMB_DIR, "video")
     thumb_file = os.path.join(thumb_root, filepath + ".jpg")
     os.makedirs(os.path.dirname(thumb_file), exist_ok=True)
 

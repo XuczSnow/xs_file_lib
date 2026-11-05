@@ -1,0 +1,1167 @@
+/* =========================================================================
+   style.css —— 主界面（index.html）样式
+   结构：全局 → 登录 → 侧边栏 → 内容区(任务卡片) → 文件页面
+        → 上传工具栏 → 共享管理 → 用户管理 → 深色模式 → 移动端
+   ========================================================================= */
+
+/* ---------- 全局 ---------- */
+body {
+    margin: 0;
+    font-family: Segoe UI;
+    overflow: hidden;
+}
+
+/* ---------- 登录界面 ---------- */
+.login-container {
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #f5f5f5;
+}
+
+/* ---------- 侧边栏（桌面端固定 280px 宽，移动端隐藏） ---------- */
+.sidebar {
+    width: 280px;
+    height: 100vh;
+    background: #1f2937;
+    color: white;
+    padding: 20px;
+    position: fixed;
+    overflow-y: scroll;
+    scrollbar-width: thin;
+    scrollbar-color:
+        transparent transparent;
+}
+
+/* 侧边栏滚动条：默认透明，悬停时显现 */
+.sidebar:hover {
+    scrollbar-color:
+        rgba(148, 163, 184, .5) transparent;
+}
+
+.sidebar::-webkit-scrollbar {
+    width: 6px;
+}
+
+.sidebar::-webkit-scrollbar-thumb {
+    background: transparent;
+}
+
+.sidebar:hover::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, .5);
+}
+
+/* 侧边栏内的当前用户信息块 */
+.user-panel {
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid #334155;
+    padding: 10px;
+    border-radius: 8px;
+    margin-bottom: 15px;
+}
+
+.user-panel div {
+    margin: 6px 0;
+    font-size: 18px;
+    text-align: center;
+}
+
+.sidebar button {
+    border-radius: 8px;
+    transition: .2s;
+}
+
+/* ---------- 内容区域（侧边栏右侧的主面板，可纵向滚动） ---------- */
+.content {
+    margin-left: 280px;
+    height: 100vh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-gutter: stable;
+    padding: 20px;
+}
+
+/* 内容区滚动条样式 */
+.content::-webkit-scrollbar {
+    width: 8px;
+}
+
+.content::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, .4);
+    border-radius: 999px;
+}
+
+.content::-webkit-scrollbar-thumb:hover {
+    background: rgba(148, 163, 184, .7);
+}
+
+/* ---------- 文件夹打包任务进度卡片 ---------- */
+
+/* 任务容器：吸顶在内容区顶部 */
+.task-container {
+    position: sticky;
+    top: 10px;
+    z-index: 1000;
+    margin-bottom: 16px;
+}
+
+.task-card {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 12px 16px;
+    margin-bottom: 10px;
+    box-shadow:
+        0 4px 12px rgba(0, 0, 0, .08);
+}
+
+.task-title {
+    font-size: 14px;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.task-status {
+    font-size: 13px;
+    color: #64748b;
+}
+
+/* 打包中：进度条用 keyframes 做左右跑动的加载动画 */
+.task-progress {
+    width: 100%;
+    height: 6px;
+    background: #e5e7eb;
+    border-radius: 999px;
+    overflow: hidden;
+    margin-top: 8px;
+}
+
+.task-progress-bar {
+    height: 100%;
+    width: 30%;
+    background: #2563eb;
+    animation:
+        task-loading
+        1.2s
+        infinite;
+}
+
+@keyframes task-loading {
+    0% {
+        margin-left: -30%;
+    }
+
+    100% {
+        margin-left: 100%;
+    }
+}
+
+
+/* =========================================================================
+   文件管理页面
+   ========================================================================= */
+
+.header-bar {
+    margin-bottom: 20px;
+}
+
+/* "当前目录"选择器外观（伪装成 Bootstrap 输入框） */
+.current-folder {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: 38px;
+    padding: .375rem .75rem;
+    font-size: 1rem;
+    line-height: 1.5;
+    color: #495057;
+    background-color: #fff;
+    border: 1px solid #ced4da;
+    border-radius: .375rem;
+    margin-bottom: 10px;
+}
+
+.current-folder-title {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 38px;
+    padding: .375rem .75rem;
+    font-size: 1rem;
+    line-height: 1.5;
+    color: #495057;
+    background-color: #fff;
+    border: 1px solid #ced4da;
+    border-radius: .375rem;
+    margin-bottom: 10px;
+}
+
+/* 文件夹卡片：外层容器 */
+.folder-card {
+    border: 1px solid #ddd;
+    border-radius: 10px;
+    margin-bottom: 10px;
+    overflow: hidden;
+}
+
+/* 文件夹标题行：展开指示器 + 文件夹名 + 操作按钮 */
+.folder-title {
+    display: flex;
+    align-items: center;
+    background: #f3f4f6;
+    padding: 12px;
+    font-weight: bold;
+}
+
+.folder-title:hover {
+    background: #e5e7eb;
+}
+
+.folder-name {
+    flex: 1;
+    cursor: pointer;
+}
+
+/* 展开的文件夹内容区：左侧竖线表示层级 */
+.folder-content {
+    padding-left: 30px;
+    padding-right: 12px;
+    border-left: 2px solid #d1d5db;
+}
+
+.folder-actions {
+    display: flex;
+    gap: 8px;
+}
+
+/* 当前选中文件夹的高亮底色 */
+.folder-selected {
+    background: #dbeafe;
+}
+
+/* 文件夹属性：文件数 / 总大小 的标签 */
+.folder-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-right: 20px;
+}
+
+.folder-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 10px;
+    border-radius: 999px;
+    background: #f1f5f9;
+    color: #64748b;
+    border: 1px solid #d1d5db;
+    font-size: 14px;
+    white-space: nowrap;
+}
+
+/* 文件行：文件名 + 属性 + 操作按钮 */
+.file-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 0;
+}
+
+.file-name {
+    flex: 1;
+    cursor: pointer;
+}
+
+.file-name:hover {
+    color: #2563eb;
+}
+
+.file-actions {
+    display: flex;
+    gap: 8px;
+}
+
+/* 文件属性：大小 / 类型 / 修改时间 三列网格（右对齐） */
+.file-meta {
+    display: grid;
+    color: #6b7280;
+    grid-template-columns:
+        90px 70px 170px;
+    justify-content: end;
+    align-items: center;
+    text-align: right;
+    gap: 16px;
+    margin-right: 20px;
+    text-transform: uppercase;
+}
+
+/* 图标按钮（下载/共享/重命名/删除） */
+.icon-btn {
+    width: 34px;
+    height: 34px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    cursor: pointer;
+    color: #64748b;
+    transition: all .2s ease;
+}
+
+.icon-btn:hover {
+    background: #f1f5f9;
+    color: #2563eb;
+}
+
+/* 删除按钮：悬停红色警示 */
+.icon-btn.delete-btn:hover {
+    background: #fee2e2;
+    color: #dc2626;
+}
+
+
+/* =========================================================================
+   树状文件结构（管理页 / 共享页共用）
+   布局：.node-content 嵌套固定缩进（每层 22px），折叠由 .tree-node.collapsed
+        驱动（指示器旋转 + 内容隐藏），不再依赖内联 padding-left。
+   ========================================================================= */
+
+:root {
+    --tree-indent: 22px;
+    --tree-line: #cbd5e1;
+    --tree-title-bg: #ffffff;
+    --tree-title-border: #e5e7eb;
+    --tree-title-hover: #f1f5f9;
+    --tree-selected: #eff6ff;
+    --tree-selected-line: #3b82f6;
+}
+
+/* 树节点容器 */
+.tree-node {
+    position: relative;
+}
+
+/* 文件夹标题行：指示器 + 名称 + 属性标签 + 操作按钮 */
+.tree-folder-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--tree-title-bg);
+    border: 1px solid var(--tree-title-border);
+    border-left: 3px solid var(--tree-title-border);
+    border-radius: 10px;
+    padding: 9px 12px;
+    margin: 6px 0;
+    font-weight: 600;
+    cursor: pointer;
+    transition:
+        background .15s ease,
+        border-color .15s ease,
+        box-shadow .15s ease;
+}
+
+.tree-folder-title:hover {
+    background: var(--tree-title-hover);
+    box-shadow: 0 1px 4px rgba(15, 23, 42, .06);
+}
+
+/* 选中（当前目录）：左侧蓝色强调条 + 浅蓝底 */
+.tree-folder-title.folder-selected {
+    background: var(--tree-selected);
+    border-left-color: var(--tree-selected-line);
+}
+
+/* 折叠指示器：▾ 可旋转，折叠时旋转 -90° 指向右 */
+.tree-toggle-indicator {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    flex: 0 0 18px;
+    font-size: 13px;
+    line-height: 1;
+    color: #64748b;
+    transition: transform .18s ease;
+}
+
+/* 文件夹名：占满剩余宽度，超长省略 */
+.tree-folder-name {
+    flex: 1;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    letter-spacing: .1px;
+}
+
+/* 折叠态：指示器指向右 + 隐藏内容 */
+.tree-node.collapsed > .tree-folder-title .tree-toggle-indicator {
+    transform: rotate(-90deg);
+}
+
+.tree-node.collapsed > .node-content {
+    display: none;
+}
+
+/* 内容包裹区：左侧层级竖线 + 固定缩进（递归叠加形成树） */
+.node-content {
+    position: relative;
+    margin-left: var(--tree-indent);
+    padding: 2px 0 4px;
+    padding-left: 12px;
+    /* border-left: 2px solid var(--tree-line); */
+}
+
+/* 文件行（树内）：图标 + 名称 + 属性 + 操作，悬停高亮 */
+.file-item.tree-file {
+    padding: 5px 8px;
+    border-radius: 8px;
+    transition: background .12s ease;
+}
+
+.file-item.tree-file:hover {
+    background: #f8fafc;
+}
+
+/* 文件操作按钮：默认弱化，悬停行时浮现，减少视觉噪音 */
+.file-item.tree-file .file-actions {
+    opacity: .55;
+}
+
+.file-item.tree-file:hover .file-actions {
+    opacity: 1;
+}
+
+/* 文件夹操作按钮：默认弱化，悬停标题时浮现 */
+.tree-folder-title .folder-actions {
+    opacity: .45;
+}
+
+.tree-folder-title:hover .folder-actions {
+    opacity: 1;
+}
+
+/* 空库占位提示 */
+.empty-tip {
+    color: #94a3b8;
+    padding: 28px 16px;
+    text-align: center;
+    font-size: 14px;
+}
+
+
+/* ---------- 上传 / 新建文件夹工具栏 ---------- */
+.toolbar-card {
+    background: white;
+    padding: 16px;
+    border-radius: 12px;
+    box-shadow:
+        0 2px 8px rgba(0, 0, 0, 0.08);
+    margin-bottom: 20px;
+
+}
+
+/* 工具栏每行：左输入框 + 右按钮（固定 100px 宽） */
+.toolbar-row {
+    display: grid;
+    grid-template-columns: 1fr 100px;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+/* 最后一行不要间距 */
+.toolbar-row:last-child {
+    margin-bottom: 0;
+}
+
+
+/* =========================================================================
+   共享管理页面
+   ========================================================================= */
+
+.share-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+/* 共享总数计数徽章 */
+.share-count {
+    background: #e5e7eb;
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 13px;
+}
+
+/* 共享卡片 */
+.share-card {
+    background: white;
+    border-radius: 12px;
+    padding: 16px;
+    margin-bottom: 12px;
+    border: 1px solid #e5e7eb;
+    box-shadow:
+        0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+/* 卡片顶部：ID + 状态徽章 */
+.share-card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
+.share-id {
+    font-size: 13px;
+    color: #64748b;
+}
+
+.share-status {
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+/* 有效（绿）/ 已过期（红） */
+.share-active {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.share-expired {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+/* 共享路径 */
+.share-path {
+    font-size: 15px;
+    font-weight: 500;
+    margin-bottom: 10px;
+    word-break: break-all;
+}
+
+/* 信息标签行 */
+.share-meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    margin: 10px 0px;
+}
+
+.share-meta {
+    font-size: 12px;
+    color: #6b7280;
+    background: #f8fafc;
+    padding: 4px 10px;
+    border-radius: 999px;
+    white-space: nowrap;
+}
+
+/* 操作按钮组 */
+
+.share-actions {
+    display: flex;
+    gap: 8px;
+}
+
+/* =========================================================================
+   用户管理页面
+   ========================================================================= */
+
+/* 新增用户区域 */
+#userManagerPage .card {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    box-shadow:
+        0 2px 8px rgba(0, 0, 0, 0.08);
+    border-radius: 6px;
+    margin-top: 10px;
+}
+
+/* 表格 */
+#userManagerPage table {
+    background: white;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+/* 表头 */
+#userManagerPage thead {
+    background: #2563eb;
+    color: white;
+}
+
+/* 表格行悬停 */
+#userManagerPage tbody tr:hover {
+    background: #f3f4f6;
+}
+
+/* 输入框 */
+#userManagerPage input {
+    border: 1px solid #d1d5db;
+    border-radius: 8px;
+}
+
+/* 新增用户按钮 */
+#userManagerPage .btn-success {
+    background: #16a34a;
+    border: none;
+    margin-top: 10px;
+}
+
+#userManagerPage .btn-success:hover {
+    background: #15803d;
+}
+
+/* =========================================================================
+   系统设置页面（index.html #settingManagerPage）
+   优化后的信息架构：页头（标题 + 右侧"数据看板/保存设置"按钮组）
+   → 站点信息卡片 → 二维码样式卡片（右上角真实二维码预览）。
+   访问数据看板已拆到独立页 /dashboard（数据接口仍受 token 保护）。
+   ========================================================================= */
+
+/* 设置页头：左侧标题 + 右侧操作按钮组（数据看板按钮放在保存设置旁） */
+.setting-page-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+
+.setting-page-head h3 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 700;
+}
+
+.setting-page-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* 设置卡片：白底圆角 + 轻阴影（与共享卡片同款规格） */
+.setting-card {
+    background: #ffffff;
+    border: 1px solid #e5e7eb;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    border-radius: 12px;
+}
+
+/* 卡片标题行：图标 + 文字；二维码卡片标题右侧挂真实二维码预览 */
+.setting-card-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 14px;
+}
+
+.setting-card-title .bi {
+    color: #2563eb;
+    font-size: 18px;
+}
+
+/* 二维码实时预览：右上角真实二维码（/api/qr-preview，编码 git 库地址示例） */
+.setting-card-preview {
+    margin-left: auto;
+    line-height: 0;
+}
+
+.setting-card-preview img {
+    width: 84px;
+    height: 84px;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    object-fit: contain;
+    background: #fff;
+    box-shadow: 0 1px 4px rgba(15, 23, 42, .08);
+}
+
+/* 表单标签：统一块级 + 字重 */
+.setting-label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 4px;
+    font-size: 14px;
+    color: #334155;
+}
+
+/* ---------- 设置页深色模式 ---------- */
+body.dark .setting-card {
+    background: #1e293b;
+    border-color: #334155;
+}
+
+body.dark .setting-card-title {
+    color: #f8fafc;
+}
+
+body.dark .setting-label {
+    color: #cbd5e1;
+}
+
+body.dark .setting-card-preview img {
+    background: transparent;
+    border-color: #475569;
+}
+
+/* =========================================================================
+   深色模式（body.dark 由 toggleDarkMode 切换，并持久化到 localStorage）
+   约定：深色变量统一使用 Slate 色阶（#0f172a / #1e293b / #334155 / #475569）
+   ========================================================================= */
+
+body.dark {
+    background: #0f172a;
+    color: #f8fafc;
+}
+
+/* 当前目录选择器 */
+body.dark .current-folder {
+    background: #1e293b;
+    color: #f8fafc;
+    border: 1px solid #475569;
+}
+
+/* 侧边栏 */
+body.dark .sidebar {
+    background: #080c13;
+    color: #f8fafc;
+}
+
+body.dark .sidebar::-webkit-scrollbar-thumb {
+    background: rgba(100, 116, 139, .45);
+}
+
+body.dark .sidebar::-webkit-scrollbar-thumb:hover {
+    background: rgba(148, 163, 184, .7);
+}
+
+/* 主内容区 */
+body.dark .content {
+    background: #0f172a;
+}
+
+/* 文件卡片 */
+body.dark .file-card {
+    background: #1e293b;
+    color: #f8fafc;
+    border: 1px solid #334155;
+}
+
+/* 文件夹 */
+body.dark .folder-card {
+    background: #1e293b;
+    border: 1px solid #334155;
+}
+
+body.dark .folder-title {
+    background: #334155;
+    color: #f8fafc;
+}
+
+body.dark .folder-title:hover {
+    background: #3f4d63;
+}
+
+body.dark .folder-selected {
+    background: rgba(59, 130, 246, 0.25);
+}
+
+body.dark .folder-tag {
+    background: #1e293b;
+    border: 1px solid #475569;
+    color: #cbd5e1;
+}
+
+/* 树节点（深色）：通过覆盖 CSS 变量统一切换，保持深浅一致逻辑 */
+body.dark {
+    --tree-line: #334155;
+    --tree-title-bg: #1e293b;
+    --tree-title-border: #334155;
+    --tree-title-hover: #273449;
+    --tree-selected: #1e3a5f;
+}
+
+body.dark .tree-folder-title {
+    color: #f8fafc;
+}
+
+body.dark .tree-toggle-indicator {
+    color: #94a3b8;
+}
+
+body.dark .file-item.tree-file:hover {
+    background: #1e293b;
+}
+
+body.dark .empty-tip {
+    color: #64748b;
+}
+
+/* 文件 */
+body.dark .file-item {
+    color: #cbd5e1;
+}
+
+body.dark .icon-btn {
+    color: #cbd5e1;
+}
+
+body.dark .icon-btn:hover {
+    background: #334155;
+    color: #60a5fa;
+}
+
+/* 用户面板 */
+body.dark .user-panel {
+    background: #1e293b;
+    border: 1px solid #334155;
+}
+
+/* 输入框 */
+body.dark input {
+    background: #1e293b;
+    color: #f8fafc;
+    border: 1px solid #475569;
+}
+
+/* 下拉框 */
+body.dark select {
+    background: #1e293b;
+    color: #f8fafc;
+    border: 1px solid #475569;
+}
+
+/* textarea */
+body.dark textarea {
+    background: #1e293b;
+    color: #f8fafc;
+    border: 1px solid #475569;
+}
+
+/* 表格 */
+body.dark table {
+    color: #f8fafc;
+}
+
+body.dark th {
+    background: #1e293b;
+}
+
+body.dark td {
+    background: #0f172a;
+}
+
+/* Bootstrap Card */
+body.dark .card {
+    background: #1e293b;
+    color: #f8fafc;
+    border-color: #334155;
+}
+
+/* Bootstrap Modal */
+body.dark .modal-content {
+    background: #1e293b;
+    color: #f8fafc;
+}
+
+body.dark .share-card {
+    background: #1e293b;
+    border-color: #334155;
+}
+
+body.dark .share-path {
+    color: #f8fafc;
+}
+
+body.dark .share-meta {
+    background: #334155;
+    color: #cbd5e1;
+}
+
+body.dark .share-count {
+    background: #334155;
+    color: #f8fafc;
+}
+
+/* 用户管理 */
+body.dark #userManagerPage {
+    background: #080c13;
+    color: #f8fafc;
+}
+
+/* 新增用户卡片 */
+body.dark #userManagerPage .card {
+    background: #1e293b;
+    color: #f8fafc;
+    border: 1px solid #334155;
+}
+
+/* 表格 */
+body.dark #userManagerPage table {
+    color: #f8fafc;
+}
+
+body.dark #userManagerPage thead {
+    background: #1e293b;
+}
+
+body.dark #userManagerPage th {
+    background: #1e293b;
+    color: #f8fafc;
+    border-color: #334155;
+}
+
+body.dark #userManagerPage td {
+    background: #0f172a;
+    color: #f8fafc;
+    border-color: #334155;
+}
+
+/* 输入框 */
+body.dark #userManagerPage input {
+    background: #1e293b;
+    color: #f8fafc;
+    border: 1px solid #475569;
+}
+
+/* 下拉框 */
+body.dark #userManagerPage select {
+    background: #1e293b;
+    color: #f8fafc;
+    border: 1px solid #475569;
+}
+
+
+/* placeholder */
+body.dark input::placeholder {
+    color: #94a3b8;
+}
+
+/* 搜索框 */
+body.dark #search {
+    background: #1e293b;
+    color: #f8fafc;
+}
+
+/* 文件上传区域 */
+body.dark .toolbar-card {
+    background: #1e293b;
+    border: 1px solid #334155;
+}
+
+/* 移动端导航与顶栏 */
+body.dark .mobile-nav {
+    background: #1e293b;
+    border-top: 1px solid #334155;
+}
+
+body.dark .mobile-nav button {
+    color: #cbd5e1;
+}
+
+body.dark .mobile-header {
+    background: #1e293b;
+    border-bottom: 1px solid #334155;
+}
+
+body.dark .mobile-user {
+    color: #94a3b8;
+}
+
+body.dark .mobile-theme-btn {
+    background: #334155;
+    color: white;
+}
+
+
+/* =========================================================================
+   移动端适配（≤1024px：隐藏侧边栏，显示顶栏 + 底部导航）
+   ========================================================================= */
+
+/* 桌面端默认隐藏，移动端再显示 */
+.mobile-nav {
+    display: none;
+}
+
+.mobile-header {
+    display: none;
+}
+
+@media (max-width:1024px) {
+
+    /* 隐藏桌面侧边栏，改用底部导航 */
+    .sidebar {
+        display: none;
+    }
+
+    /* 移动端顶栏：吸顶 + 站点名/主题/当前用户 */
+    .mobile-header {
+        display: block;
+        background: white;
+        padding: 12px 16px;
+        margin: -12px -12px 12px -12px;
+        border-bottom: 1px solid #e5e7eb;
+        position: sticky;
+        top: 0;
+        z-index: 100;
+    }
+
+    .mobile-header-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    #mobileSiteTitle {
+        font-size: 18px;
+        font-weight: 600;
+    }
+
+    .mobile-user {
+        text-align: center;
+        margin-top: 6px;
+        font-size: 14px;
+        color: #64748b;
+    }
+
+    /* 移动端主题切换按钮（圆形） */
+    .mobile-theme-btn {
+        width: 36px;
+        height: 36px;
+        border: none;
+        border-radius: 10px;
+        background: #f1f5f9;
+        cursor: pointer;
+    }
+
+    /* 内容区去侧边栏偏移，底部预留导航高度 */
+    .content {
+        margin-left: 0;
+        padding: 12px;
+        padding-bottom: 200px;
+    }
+
+    /* 文件夹卡片：标题/属性/操作换行堆叠 */
+    .folder-title {
+        flex-wrap: wrap;
+    }
+
+    .folder-meta {
+        width: 100%;
+        flex-wrap: wrap;
+        margin-top: 8px;
+    }
+
+    .folder-actions {
+        width: 100%;
+        justify-content: flex-end;
+        margin-top: 8px;
+    }
+
+    /* 文件行：纵向堆叠（第1行文件名 → 第2行属性 → 第3行操作按钮，信息在按钮上方） */
+    .file-item {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .file-meta {
+        width: 100%;
+        margin-top: 4px;
+    }
+
+    .file-actions {
+        margin-top: 8px;
+        width: 100%;
+        display: flex;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+    }
+
+    /* 移动端底部固定导航 */
+    .mobile-nav {
+        display: flex;
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 60px;
+        background: white;
+        border-top: 1px solid #e5e7eb;
+        z-index: 999;
+    }
+
+    .mobile-nav button {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 2px;
+        border: none;
+        background: transparent;
+        font-size: 18px;
+    }
+
+    .mobile-nav span {
+        font-size: 12px;
+    }
+
+    /* 移动端树状结构：收窄层级缩进，标题/文件行纵向适配 */
+    :root {
+        --tree-indent: 14px;
+    }
+
+    /* 文件夹行：纵向三行堆叠（第1行名字+指示器 → 第2行属性信息 → 第3行操作按钮，信息在按钮上方） */
+    .tree-folder-title {
+        flex-wrap: wrap;
+        row-gap: 6px;
+    }
+
+    .tree-folder-title .folder-meta {
+        order: 3;
+        flex-basis: 100%;
+    }
+
+    /* 操作按钮独占第3行（信息在其上方），靠右显示 */
+    .tree-folder-title .folder-actions {
+        order: 4;
+        flex-basis: 100%;
+        justify-content: flex-end;
+        opacity: 1;
+        margin-left: 0;
+        margin-top: 2px;
+    }
+
+    /* 文件行：属性（大小/类型/修改时间）收进一行，排在操作按钮上方 */
+    .file-item.tree-file .file-meta {
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 12px;
+        margin-top: 4px;
+        margin-right: 0;
+        font-size: 12px;
+    }
+
+    /* 文件行操作按钮：整行靠右 */
+    .file-item.tree-file .file-actions {
+        width: 100%;
+        justify-content: flex-end;
+        opacity: 1;
+        margin-top: 8px;
+    }
+}
