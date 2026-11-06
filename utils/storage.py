@@ -40,10 +40,20 @@ DIR_MIGRATIONS = [
 # 迁移后删除的旧目录（内容属可再生产缓存，无需保留）
 LEGACY_DIRS_TO_PURGE = [".thumbs"]
 
-# 访问日志滚动上限（超过后只保留最近 N 条，防止 JSON 无界增长）
+# 访问日志滚动上限（默认 5000；可被设置项 access_log_max 覆盖，0=不限制）
 ACCESS_LOG_MAX = 5000
 
 _save_lock = threading.Lock()
+
+
+def access_log_max() -> int:
+    """访问日志滚动上限：设置项 access_log_max 优先，缺省 5000（0=不限制）。
+    热写与启动清理（prune_share_access_log）都按它动态裁剪。"""
+    try:
+        v = int((load_config() or {}).get("access_log_max", ACCESS_LOG_MAX))
+        return v if v >= 0 else ACCESS_LOG_MAX
+    except (ValueError, TypeError):
+        return ACCESS_LOG_MAX
 
 
 def hash_password(password: str) -> str:
@@ -218,8 +228,13 @@ def write_share_access_log(data):
     hotstore.buffer_access_log(data)
 
 
-def prune_share_access_log(max_items: int = ACCESS_LOG_MAX):
-    """访问日志滚动清理：超出上限只保留最近 max_items 条（S2）。"""
+def prune_share_access_log(max_items: int = 0):
+    """访问日志滚动清理：超出上限只保留最近 max_items 条（S2）。
+    传 0 表示按设置项 access_log_max 动态取值。"""
+    if max_items == 0:
+        max_items = access_log_max()
+    if max_items <= 0:
+        return 0
     logs = load_json(ACCESS_LOG_CONF, [])
     if len(logs) > max_items:
         save_json(ACCESS_LOG_CONF, logs[-max_items:])
@@ -322,6 +337,71 @@ def _migrate_directory_layout():
     return moved
 
 
+def _default_settings() -> dict:
+    """config.json 的完整默认键（含上传限制/共享默认/安全限流/热写参数）。"""
+    from utils import security
+    return {
+        # 站点
+        "site_name": "XS File Library",
+        "root_path": "uploads",
+        "public_base_url": "",
+        # zip 缓存容量上限（GB）：cache/zips 总量超过则按最旧优先裁剪
+        "cache_max_gb": 10,
+        # 上传限制
+        "upload_max_mb": 100,                       # 0 = 不限制
+        "upload_extensions": ",".join(security.DEFAULT_ALLOWED_EXTENSIONS),
+        # 共享/上传链接默认值（创建弹窗的预选项）
+        "default_share_days": 7,
+        "default_share_mode": "normal",             # normal | album
+        # 安全（登录限流 / 会话有效期 / 访问日志滚动上限）
+        "login_max_failures": 5,
+        "login_cooldown_sec": 300,
+        "token_ttl_hours": 12,
+        "access_log_max": 5000,                    # 0 = 不限制
+        # 热写落盘间隔（秒）
+        "hot_flush_sec": 30,
+        # 图片缩略图尺寸（短边像素，列表/预览两档）
+        "thumb_size_list": 600,
+        "thumb_size_preview": 1200,
+        # 二维码样式
+        "qr_style": {
+            "fg_color": "000000",
+            "bg_color": "FFFFFF",
+            "error_correction": "M",
+            "box_size": 8,
+            "border": 2,
+        },
+    }
+
+
+def _ensure_settings_defaults():
+    """已有 config.json 补齐缺失的默认键（幂等，不覆盖用户已改过的值）。"""
+    if not os.path.exists(SETTING_CONF):
+        return
+    cur = load_config()
+    defaults = _default_settings()
+    changed = False
+    for k, v in defaults.items():
+        if k not in cur:
+            cur[k] = v
+            changed = True
+    if changed:
+        save_json(SETTING_CONF, cur)
+
+
+def _apply_login_limiter_from_config():
+    """按 config.json 的 login_max_failures / login_cooldown_sec 刷新登录限流器
+    （启动与保存设置时各调一次，运行时热生效，无需重启进程）。"""
+    from utils import security
+    try:
+        cfg = load_config() or {}
+        mf = int(cfg.get("login_max_failures", 5))
+        cd = int(cfg.get("login_cooldown_sec", 300))
+    except (ValueError, TypeError):
+        mf, cd = 5, 300
+    security._login_limiter.reconfigure(mf, cd)
+
+
 def init_config():
     """首次启动时创建目录与默认配置文件（应用启动时调用一次）。"""
     _migrate_directory_layout()
@@ -354,20 +434,12 @@ def init_config():
         save_json(LINK_CONF, {})
 
     if not os.path.exists(SETTING_CONF):
-        save_json(SETTING_CONF, {
-            "site_name": "XS File Library",
-            "root_path": "uploads",
-            "public_base_url": "",
-            # 二维码缓存容量上限（GB）：cache/zips 总量超过则按最旧优先裁剪
-            "cache_max_gb": 10,
-            "qr_style": {
-                "fg_color": "000000",
-                "bg_color": "FFFFFF",
-                "error_correction": "M",
-                "box_size": 8,
-                "border": 2,
-            },
-        })
+        save_json(SETTING_CONF, _default_settings())
+    else:
+        _ensure_settings_defaults()
+
+    # 安全限流参数按配置刷新（启动时应用一次）
+    _apply_login_limiter_from_config()
 
     # ---- 启动自检（S1 / S2 / A3 + 热写）----
     # S1：确保 HMAC 密钥已就位（首次随机生成并持久化到 data/secret.key）

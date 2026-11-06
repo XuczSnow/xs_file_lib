@@ -484,14 +484,7 @@ body {
    共享管理页面
    ========================================================================= */
 
-.share-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 20px;
-}
-
-/* 共享总数计数徽章 */
+/* 共享总数计数徽章（页头右侧） */
 .share-count {
     background: #e5e7eb;
     padding: 6px 12px;
@@ -630,8 +623,14 @@ body {
    访问数据看板已拆到独立页 /dashboard（数据接口仍受 token 保护）。
    ========================================================================= */
 
-/* 设置页头：左侧标题 + 右侧操作按钮组（数据看板按钮放在保存设置旁） */
-.setting-page-head {
+/* =========================================================================
+   页面统一风格（链接管理 / 用户管理 / 系统设置共用）
+   页头：左侧"图标 + 标题"，右侧可选操作按钮组/计数徽章。
+   卡片：白底圆角 + 轻阴影（.setting-card），图标标题（.setting-card-title）。
+   ========================================================================= */
+
+/* 页头：左侧标题（图标 + h3）+ 右侧动作区（数据看板/保存设置/计数徽章） */
+.page-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -640,13 +639,31 @@ body {
     margin-bottom: 16px;
 }
 
-.setting-page-head h3 {
+.page-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.page-title h3 {
     margin: 0;
     font-size: 20px;
     font-weight: 700;
 }
 
-.setting-page-actions {
+.page-icon {
+    font-size: 22px;
+    color: #2563eb;
+    width: 38px;
+    height: 38px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(37, 99, 235, .1);
+    border-radius: 10px;
+}
+
+.page-head-actions {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -658,9 +675,11 @@ body {
     border: 1px solid #e5e7eb;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
     border-radius: 12px;
+    /* 卡片之间留间隔：最后一张卡片（页头按钮下方）不额外留白由页头承担 */
+    margin-bottom: 18px;
 }
 
-/* 卡片标题行：图标 + 文字；二维码卡片标题右侧挂真实二维码预览 */
+/* 卡片标题行：图标 + 文字 */
 .setting-card-title {
     display: flex;
     align-items: center;
@@ -675,20 +694,34 @@ body {
     font-size: 18px;
 }
 
-/* 二维码实时预览：右上角真实二维码（/api/qr-preview，编码 git 库地址示例） */
-.setting-card-preview {
-    margin-left: auto;
-    line-height: 0;
+/* 二维码实时预览框：卡片右侧独立区域（/api/qr-preview，编码 git 库地址示例），
+   比旧的右上角小色块更醒目、与左侧表单对齐 */
+.qr-preview-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 16px;
+    background: #f8fafc;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    height: 100%;
 }
 
-.setting-card-preview img {
-    width: 84px;
-    height: 84px;
+.qr-preview-box img {
+    width: 150px;
+    height: 150px;
     border: 1px solid #e5e7eb;
-    border-radius: 6px;
+    border-radius: 8px;
     object-fit: contain;
     background: #fff;
-    box-shadow: 0 1px 4px rgba(15, 23, 42, .08);
+    box-shadow: 0 2px 8px rgba(15, 23, 42, .1);
+    image-rendering: pixelated;
+}
+
+.qr-preview-cap {
+    font-size: 12px;
+    color: #64748b;
 }
 
 /* 表单标签：统一块级 + 字重 */
@@ -714,8 +747,116 @@ body.dark .setting-label {
     color: #cbd5e1;
 }
 
-body.dark .setting-card-preview img {
-    background: transparent;
+body.dark .qr-preview-box {
+    background: #0f172a;
+    border-color: #334155;
+}
+
+body.dark .qr-preview-box img {
+    background: #0f172a;
+    border-color: #475569;
+}
+
+body.dark .qr-preview-cap {
+    color: #94a3b8;
+}
+
+/* ---------- 用户管理页：权限九宫格 / 用户表 ---------- */
+
+/* 权限勾选网格：7 项自适应 2~4 列（桌面 4 列，窄屏自动折行） */
+.perm-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 8px 16px;
+}
+
+.perm-grid label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    color: #334155;
+    background: #f8fafc;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 8px 10px;
+    cursor: pointer;
+    transition:
+        border-color .15s ease,
+        background .15s ease;
+}
+
+.perm-grid label:hover {
+    border-color: #cbd5e1;
+}
+
+.perm-grid label:has(input:checked) {
+    background: rgba(37, 99, 235, .08);
+    border-color: rgba(37, 99, 235, .4);
+    color: #1e40af;
+    font-weight: 600;
+}
+
+.perm-grid input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    accent-color: #2563eb;
+    flex: 0 0 16px;
+}
+
+/* 用户管理页表格：与共享卡片同规格，表头吸顶 + 等宽用户名 */
+.setting-table {
+    font-size: 14px;
+}
+
+.setting-table thead th {
+    background: #f8fafc;
+    color: #64748b;
+    font-weight: 600;
+    font-size: 12px;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.setting-table td {
+    vertical-align: middle;
+}
+
+/* 设置页"等宽字体输入框"（扩展名白名单、日志条数等） */
+.mono-input {
+    font-family: Consolas, "Cascadia Code", monospace;
+    font-size: 13px;
+}
+
+/* ---------- 链接管理/用户管理 深色模式 ---------- */
+body.dark .page-title h3 {
+    color: #f8fafc;
+}
+
+body.dark .page-icon {
+    background: rgba(37, 99, 235, .25);
+}
+
+body.dark .perm-grid label {
+    background: #1e293b;
+    border-color: #334155;
+    color: #cbd5e1;
+}
+
+body.dark .perm-grid label:has(input:checked) {
+    background: rgba(59, 130, 246, .2);
+    border-color: rgba(59, 130, 246, .5);
+    color: #bfdbfe;
+}
+
+body.dark .setting-table thead th {
+    background: #1e293b;
+    color: #94a3b8;
+    border-color: #334155;
+}
+
+body.dark .mono-input {
+    background: #1e293b;
+    color: #f8fafc;
     border-color: #475569;
 }
 

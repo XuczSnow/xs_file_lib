@@ -97,7 +97,8 @@ async def upload_file(
     # 文件名只取末段 basename，防止 ../ 写入越界
     save_path = os.path.join(target_dir, security.safe_filename(file.filename))
 
-    # 流式写入并做大小上限（security.MAX_UPLOAD_BYTES），超限即中断并清理
+    # 流式写入并做大小上限（security.max_upload_bytes()，0=不限制），超限即中断并清理
+    limit = security.max_upload_bytes()
     written = 0
     with open(save_path, "wb") as buffer:
         while True:
@@ -105,7 +106,7 @@ async def upload_file(
             if not chunk:
                 break
             written += len(chunk)
-            if written > security.MAX_UPLOAD_BYTES:
+            if limit > 0 and written > limit:
                 buffer.write(b"")
                 os.remove(save_path)
                 raise HTTPException(status_code=413, detail="文件超过大小限制")

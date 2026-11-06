@@ -9,10 +9,6 @@
   相册页按"片源"去重只显示一张卡；视频播放页同片源并成一条选集，
   胶囊菜单可选"自动 / H.264 / HEVC / AV1 / VP9"分片（自动 = 浏览器 <source> 自选）。
 
-音频（--audio，默认 auto）：
-  auto → MP4 容器 AAC / WebM 容器 Opus；可显式 aac / opus / mp3 / copy（源音频直拷）。
-  容器与所选音频不兼容时自动落到该容器默认并提示（如 WebM 里 aac → opus）。
-
 编码器策略（GPU 优先，每个目标各持一条回退链；--no-gpu 强制全 CPU）：
   h264: h264_nvenc > h264_qsv > h264_amf → libx264
   hevc: hevc_nvenc > hevc_qsv > hevc_amf → libx265
@@ -21,15 +17,28 @@
   首选失败（如 NVENC 对个别源报 -22 Invalid argument）自动沿链重试，
   成功时打印实际使用的编码器；整条链失败才记失败。
 
-统一质量入口（取代旧版各编码器分散参数）：
-  --crf 28    CPU 编码器质量（x264/x265/svtav1/libaom/rav1d/vp9 通用）
-  --gpu-cq 28 GPU 编码器恒定质量（NVENC constqp / QSV / AMF）
-  --preset    速度档（x264/x265 preset 直传，VP9 映射 cpu-used；默认 medium）
+统一质量入口（网页向，取代旧版"全局一个 CRF 管所有编码器"——各编码器质量曲线不同，
+AV1 的 28 远小于其默认 40，会导致 AV1 产物比 H.264 还大）：
+  --quality low/medium/high（默认 medium）→ 按编码器映射推荐值：
+      h264 / hevc   CRF 32 / 30 / 28      （GPU CQ 30 / 28 / 26）
+      av1 (SVT/AOM) CRF 40 / 35 / 32
+      vp9           CRF 35 / 32 / 30
+  --crf / --gpu-cq  显式覆盖档位推荐值（指定后对全部相应编码器生效）
+  --max-height 1080 输出最大高度：源更高则等比缩小（0 关闭，默认 1080）
+  --preset          速度档（x264/x265 preset 直传，VP9 映射 cpu-used；默认 medium）
+
+音频码率（按容器分格式，网页向偏小）：
+  AAC/MP3 → --aac-bitrate  默认 96k    Opus → --opus-bitrate  默认 64k
+  --audio auto 时：MP4→AAC / WebM→Opus；可显式 aac / opus / mp3 / copy（源音频直拷）。
+  容器与所选音频不兼容时自动落到该容器默认并提示（如 WebM 里 aac → opus）。
 
 用法示例：
-  python transcode.py clip.mov                               # 默认 hevc + av1
+  python transcode.py clip.mov                               # 默认 hevc + av1，medium 档
+  python transcode.py clip.mov --quality low --formats av1   # 追求最小体积
   python transcode.py clip.mov --formats h264,hevc,av1,vp9   # 全 4 格式
   python transcode.py clip.mov --formats h264 --audio mp3    # 单格式 + 音频 mp3
+  python transcode.py clip.mov --crf 26 --gpu-cq 24          # 显式覆盖质量档位
+  python transcode.py clip.mov --max-height 720              # 输出封顶 720p
   python transcode.py uploads/ --delete-source               # 批处理目录并删源
   python transcode.py uploads/ --out D:/web_export --no-gpu  # 指定输出目录 + 全 CPU
 
@@ -83,6 +92,30 @@ AMF = {"h264_amf", "hevc_amf"}
 # --preset → VP9 cpu-used 映射（x264/x265 时 preset 原样透传）
 VP9_CPU_USED = {"fast": 8, "medium": 6, "slow": 4, "veryslow": 2}
 
+# 质量档位（--quality low/medium/high）→ 各编码器推荐值。
+# 各编码器质量曲线差异大（AV1 系默认 CRF≈40、H.264/HEVC 约 28、VP9 约 32），
+# 统一按"档位"映射才公平；显式 --crf / --gpu-cq 会覆盖整组对应编码器。
+# CPU 编码器 CRF（越小越清晰）：
+CPU_QUALITY = {
+    "libx264":    {"low": 32, "medium": 30, "high": 28},
+    "libx265":    {"low": 32, "medium": 30, "high": 28},
+    "libsvtav1":  {"low": 40, "medium": 35, "high": 32},
+    "libaom-av1": {"low": 40, "medium": 35, "high": 32},
+    "librav1d":   {"low": 40, "medium": 35, "high": 32},
+    "libvpx-vp9": {"low": 35, "medium": 32, "high": 30},
+}
+# GPU 编码器质量值（NVENC -cq / QSV -global_quality 为 CQP，越小越好；
+# AMF -quality 为 0~100，越大越好——按各自标尺直接存放）：
+GPU_QUALITY = {
+    "h264_nvenc": {"low": 30, "medium": 28, "high": 26},
+    "hevc_nvenc": {"low": 30, "medium": 28, "high": 26},
+    "av1_nvenc":  {"low": 34, "medium": 32, "high": 30},
+    "h264_qsv":   {"low": 30, "medium": 28, "high": 26},
+    "hevc_qsv":   {"low": 30, "medium": 28, "high": 26},
+    "h264_amf":   {"low": 40, "medium": 55, "high": 70},
+    "hevc_amf":   {"low": 40, "medium": 55, "high": 70},
+}
+
 
 # ---------------- 编码器探测 / 回退链 ----------------
 
@@ -121,24 +154,54 @@ def build_chain(fmt: str, avail: set, no_gpu: bool):
 
 # ---------------- 编码参数（统一质量入口） ----------------
 
+# 各 CPU 编码器 CRF 合法范围（越界钳制）
+CPU_CRF_RANGE = {
+    "libx264": (0, 51), "libx265": (0, 51),
+    "libsvtav1": (0, 63), "libaom-av1": (0, 63), "librav1d": (0, 63),
+    "libvpx-vp9": (0, 63),
+}
+
+
+def cpu_quality(enc: str, args) -> int:
+    """CPU 编码器 CRF：显式 --crf（覆盖整组）> --quality 档位推荐值。"""
+    if args.crf is not None:
+        v = args.crf
+    else:
+        v = CPU_QUALITY.get(enc, {"low": 32, "medium": 30, "high": 28})[args.quality]
+    lo, hi = CPU_CRF_RANGE.get(enc, (0, 51))
+    return max(lo, min(hi, v))
+
+
+def gpu_quality(enc: str, args):
+    """GPU 编码器质量值：显式 --gpu-cq（CQP 标尺，覆盖整组）> --quality 档位推荐值。
+
+    GPU_QUALITY 按各编码器自身标尺存放（NVENC/QSV 为 CQP，AMF 为 0~100 且越大越好）；
+    显式 --gpu-cq 按 CQP 标尺解释，AMF 时映射到 0~100。"""
+    if args.gpu_cq is not None:
+        if enc in AMF:
+            return max(0, min(100, int(args.gpu_cq * 2)))
+        return args.gpu_cq
+    return GPU_QUALITY.get(enc, {"low": 30, "medium": 28, "high": 26})[args.quality]
+
+
 def video_flags(fmt: str, enc: str, args) -> list:
-    """按编码器生成 -c:v 与质量参数（CPU 用 --crf，GPU 用 --gpu-cq）。"""
+    """按编码器生成 -c:v 与质量参数（按 --quality 档位 + 每编码器推荐值；
+    显式 --crf / --gpu-cq 覆盖整组对应编码器）。"""
     f = ["-c:v", enc]
     if enc in NVENC:
         # NVENC：constqp 恒定质量 + 无码率上限；p5 为速度/质量平衡档
-        f += ["-rc", "constqp", "-cq", str(args.gpu_cq), "-b:v", "0",
+        f += ["-rc", "constqp", "-cq", str(gpu_quality(enc, args)), "-b:v", "0",
               "-preset", "p5"]
     elif enc in QSV:
-        f += ["-global_quality", str(args.gpu_cq)]
+        f += ["-global_quality", str(gpu_quality(enc, args))]
     elif enc in AMF:
-        # AMF quality 0~100（越大越好）：用 gpu_cq(0~51) 近似映射
-        f += ["-quality", str(min(95, args.gpu_cq * 2))]
+        f += ["-quality", str(gpu_quality(enc, args))]
     elif enc in ("libx264", "libx265"):
-        f += ["-crf", str(args.crf), "-preset", args.preset]
+        f += ["-crf", str(cpu_quality(enc, args)), "-preset", args.preset]
     elif enc in ("libsvtav1", "libaom-av1", "librav1d"):
-        f += ["-crf", str(args.crf)]
+        f += ["-crf", str(cpu_quality(enc, args))]
     elif enc == "libvpx-vp9":
-        f += ["-crf", str(args.crf), "-b:v", "0",
+        f += ["-crf", str(cpu_quality(enc, args)), "-b:v", "0",
               "-cpu-used", str(VP9_CPU_USED.get(args.preset, 6))]
     if fmt == "hevc":
         f += ["-tag:v", "hvc1"]   # MP4 中 HEVC 的 Apple/Safari 兼容 brand
@@ -147,8 +210,10 @@ def video_flags(fmt: str, enc: str, args) -> list:
 
 def audio_flags(container: str, args):
     """生成 -c:a 参数。默认 auto：MP4→AAC / WebM→Opus。
-    容器与所选音频不兼容时落到该容器默认（aac/mp3 in WebM→opus，opus in MP4→aac）
-    并返回提示；copy 直拷源音频。"""
+
+    码率按音频格式分开（网页向偏小）：AAC/MP3 用 --aac-bitrate（默认 96k），
+    Opus 用 --opus-bitrate（默认 64k）。容器与所选音频不兼容时落到该容器默认
+    （aac/mp3 in WebM→opus，opus in MP4→aac）并返回提示；copy 直拷源音频。"""
     a = args.audio
     if a == "auto":
         a = "aac" if container == ".mp4" else "opus"
@@ -161,17 +226,29 @@ def audio_flags(container: str, args):
             f"WebM 音频落到 Opus（{a.upper()} 在 WebM 中浏览器普遍不可解）"
     if container == ".mp4" and a == "opus":
         a, codec, note = "aac", "aac", "MP4 音频落到 AAC（Opus 无法写入 MP4 容器）"
-    f = ["-c:a", codec, "-b:a", args.audio_bitrate]
+    bitrate = args.opus_bitrate if codec == "libopus" else args.aac_bitrate
+    f = ["-c:a", codec, "-b:a", bitrate]
     if codec == "libopus":
         f += ["-ar", "48000"]
     return f, note
 
 
 def build_command(src, target, args, fmt, enc) -> list:
-    """按 (格式, 该目标实际使用的编码器) 生成 ffmpeg 命令。"""
+    """按 (格式, 该目标实际使用的编码器) 生成 ffmpeg 命令。
+
+    --max-height 封顶：源高于该值时等比缩小（偶数对齐，保证 yuv420p 兼容），
+    否则不缩放；0 表示关闭。
+    """
     container = FORMATS[fmt]["ext"]
     base = [args.ffmpeg, "-nostdin", "-hide_banner", "-loglevel", "error",
             "-i", str(src), "-map", "0:v:0", "-map", "0:a?"]
+    # 分辨率封顶：-vf scale 等比"只缩不放"，宽度取偶数（yuv420p/NVENC 要求偶数）。
+    # 表达式含逗号，用单引号在 filtergraph 层保护；subprocess 列表传参不经 shell，无需转义。
+    if args.max_height > 0:
+        mh = int(args.max_height)
+        w = f"if(gt(ih,{mh}),2*floor(iw*{mh}/ih/2),iw)"
+        h = f"if(gt(ih,{mh}),{mh},ih)"
+        base += ["-vf", f"scale='{w}':'{h}'"]
     cmd = base + video_flags(fmt, enc, args) + audio_flags(container, args)[0]
     if container == ".mp4":
         cmd += ["-movflags", "+faststart"]
@@ -275,14 +352,21 @@ def main():
     ap.add_argument("--audio", default="auto", choices=["auto", "aac", "opus", "mp3", "copy"],
                     help="音频格式：auto=容器默认（MP4→AAC / WebM→Opus），"
                          "copy=源音频直拷（默认 auto）")
-    ap.add_argument("--crf", type=int, default=28,
-                    help="CPU 编码器质量（x264/x265/svtav1/libaom/rav1d/vp9 通用，越小越清晰，默认 28）")
-    ap.add_argument("--gpu-cq", type=int, default=28,
-                    help="GPU 编码器恒定质量（NVENC constqp / QSV / AMF，默认 28）")
+    # ---- 质量（统一入口：--quality 档位 + 可选显式覆盖 + 分辨率封顶）----
+    ap.add_argument("--quality", default="medium", choices=["low", "medium", "high"],
+                    help="质量档位（按编码器映射各自推荐值；低体积=low，质量优先=high，默认 medium）")
+    ap.add_argument("--crf", type=int, default=None,
+                    help="显式 CPU 编码器 CRF（覆盖 --quality 档位推荐值；缺省用档位值）")
+    ap.add_argument("--gpu-cq", type=int, default=None,
+                    help="显式 GPU 编码器恒定质量 CQP（覆盖 --quality 档位推荐值；缺省用档位值）")
+    ap.add_argument("--max-height", type=int, default=1080,
+                    help="输出最大高度（像素）：源更高则等比缩小，0=关闭。默认 1080")
+    ap.add_argument("--aac-bitrate", default="96k",
+                    help="AAC/MP3 音频码率（默认 96k；audio=copy 时忽略）")
+    ap.add_argument("--opus-bitrate", default="64k",
+                    help="Opus 音频码率（默认 64k；audio=copy 时忽略）")
     ap.add_argument("--preset", default="medium",
                     help="速度档：x264/x265 preset 直传，VP9 映射 cpu-used（默认 medium）")
-    ap.add_argument("--audio-bitrate", default="128k",
-                    help="音频码率（默认 128k；audio=copy 时忽略）")
     ap.add_argument("--no-gpu", action="store_true",
                     help="禁用 GPU 编码器（NVENC/QSV/AMF/GPU-AV1），全部用 CPU")
     # 执行选项

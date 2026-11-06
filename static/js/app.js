@@ -29,6 +29,8 @@
     let currentShareType = "";
     let currentPermFolder = ".";
     let renamePath = "";
+    // 共享/上传弹窗默认值（loadSettings 时从 /api/settings 载入）
+    let shareDefaults = { days: 7, mode: "normal" };
 
     // ---------- 初始化 ----------
 
@@ -492,6 +494,17 @@
     window.shareFile = function (path, type) {
         currentShareFile = path;
         currentShareType = type;
+        // 按设置预填弹窗默认值（有效期/共享模式），用户仍可在弹窗内改
+        const daysSel = document.getElementById("shareDays");
+        const wantDays = String(shareDefaults.days);
+        if (!Array.from(daysSel.options).some((o) => o.value === wantDays)) {
+            const opt = document.createElement("option");
+            opt.value = wantDays;
+            opt.textContent = wantDays + "天";
+            daysSel.appendChild(opt);
+        }
+        daysSel.value = wantDays;
+        document.getElementById("shareMode").value = shareDefaults.mode || "normal";
         new bootstrap.Modal(document.getElementById("shareModal")).show();
     };
 
@@ -571,7 +584,7 @@
                         <span class="share-meta">⏰ ${esc(link.expire)}</span>
                         ${isUpload
                             ? `<span class="share-meta">📤 已传 ${link.upload_count || 0}</span>`
-                            : `<span class="share-meta">👀 ${link.view_count || 0}</span>`}
+                            : `<span class="share-meta">👀 查看 ${link.view_count || 0}</span>`}
                         <span class="share-meta">🔒 ${link.password ? "已设置密码" : "无需密码"}</span>
                         ${!isUpload ? `<span class="share-meta">Ⓜ️ ${esc(link.share_mode || "normal")}</span>` : ""}
                     </div>
@@ -671,7 +684,7 @@
      * 提交成功后复制生成的 /upload/{id} 链接到剪贴板。
      */
     window.createUploadLink = async function (folder) {
-        const days = prompt("有效期(天)", "7");
+        const days = prompt("有效期(天)", String(shareDefaults.days || 7));
         if (!days) return;
         const password = prompt("访问密码(可空)", "");
 
@@ -702,10 +715,10 @@
             </tr>`).join("");
     };
 
-    /** 新增用户：收集用户名/密码/勾选的权限，提交后刷新表格。 */
+    /** 新增用户：收集用户名/密码/勾选的权限（.perm-grid），提交后刷新表格。 */
     window.addUser = async function () {
         const permissions = Array.from(
-            document.querySelectorAll(".permission-list input:checked")
+            document.querySelectorAll(".perm-grid input:checked")
         ).map((item) => item.value);
 
         const result = await X.postForm("/api/add-user", {
@@ -776,55 +789,107 @@
         return hit ? hit.label : null;
     }
 
-    /** 载入站点设置（站点名称、文件根目录、公网地址、缓存上限、二维码样式）。 */
+    /** 载入站点设置（全部键：站点信息 / 上传与共享 / 安全与性能 / 二维码样式）。 */
     window.loadSettings = async function () {
         const settings = await X.getJSON("/api/settings");
+        // 站点信息
         document.getElementById("siteName").value = settings.site_name || "";
         document.getElementById("rootPath").value = settings.root_path || "";
         document.getElementById("publicBaseUrl").value = settings.public_base_url || "";
         document.getElementById("cacheMaxGb").value =
             settings.cache_max_gb === undefined ? 10 : settings.cache_max_gb;
+        // 上传与共享
+        document.getElementById("uploadMaxMb").value =
+            settings.upload_max_mb === undefined ? 100 : settings.upload_max_mb;
+        document.getElementById("uploadExtensions").value =
+            settings.upload_extensions || "";
+        document.getElementById("defaultShareDays").value =
+            settings.default_share_days === undefined ? 7 : settings.default_share_days;
+        document.getElementById("defaultShareMode").value =
+            settings.default_share_mode || "normal";
+        // 安全与性能
+        document.getElementById("loginMaxFailures").value =
+            settings.login_max_failures === undefined ? 5 : settings.login_max_failures;
+        document.getElementById("loginCooldownSec").value =
+            settings.login_cooldown_sec === undefined ? 300 : settings.login_cooldown_sec;
+        document.getElementById("tokenTtlHours").value =
+            settings.token_ttl_hours === undefined ? 12 : settings.token_ttl_hours;
+        document.getElementById("accessLogMax").value =
+            settings.access_log_max === undefined ? 5000 : settings.access_log_max;
+        document.getElementById("hotFlushSec").value =
+            settings.hot_flush_sec === undefined ? 30 : settings.hot_flush_sec;
+        document.getElementById("thumbSizeList").value =
+            settings.thumb_size_list === undefined ? 600 : settings.thumb_size_list;
+        document.getElementById("thumbSizePreview").value =
+            settings.thumb_size_preview === undefined ? 1200 : settings.thumb_size_preview;
 
+        // 二维码样式
         const qs = settings.qr_style || {};
-        // 配色：反查命中的预设，命中则选中，否则默认第一项
         buildQrColorOptions(matchQrPreset(qs.fg_color || "000000", qs.bg_color || "FFFFFF") ||
             QR_COLOR_PRESETS[0].label);
         document.getElementById("qrEc").value = qs.error_correction || "M";
         document.getElementById("qrBox").value = qs.box_size || 8;
+
+        // 缓存共享/上传弹窗默认值（创建链接时用）
+        shareDefaults = {
+            days: settings.default_share_days === undefined ? 7 : settings.default_share_days,
+            mode: settings.default_share_mode || "normal",
+        };
     };
 
-    /** 保存站点设置（以 JSON 提交），成功后提示。 */
+    /** 保存站点设置（以 JSON 提交全部键），成功后提示。 */
     window.saveSettings = async function () {
-        // 取当前配色预设的前/背景色写入 qr_style
         const sel = document.getElementById("qrColor");
         const preset = QR_COLOR_PRESETS[Number(sel.value)] || QR_COLOR_PRESETS[0];
+        const body = {
+            // 站点信息
+            site_name: document.getElementById("siteName").value,
+            root_path: document.getElementById("rootPath").value,
+            public_base_url: document.getElementById("publicBaseUrl").value,
+            cache_max_gb: parseInt(document.getElementById("cacheMaxGb").value, 10) || 0,
+            // 上传与共享
+            upload_max_mb: parseInt(document.getElementById("uploadMaxMb").value, 10) || 0,
+            upload_extensions: document.getElementById("uploadExtensions").value.trim(),
+            default_share_days: parseInt(document.getElementById("defaultShareDays").value, 10) || 7,
+            default_share_mode: document.getElementById("defaultShareMode").value,
+            // 安全与性能
+            login_max_failures: parseInt(document.getElementById("loginMaxFailures").value, 10) || 5,
+            login_cooldown_sec: parseInt(document.getElementById("loginCooldownSec").value, 10) || 0,
+            token_ttl_hours: parseInt(document.getElementById("tokenTtlHours").value, 10) || 12,
+            access_log_max: parseInt(document.getElementById("accessLogMax").value, 10) || 0,
+            hot_flush_sec: parseInt(document.getElementById("hotFlushSec").value, 10) || 30,
+            thumb_size_list: parseInt(document.getElementById("thumbSizeList").value, 10) || 600,
+            thumb_size_preview: parseInt(document.getElementById("thumbSizePreview").value, 10) || 1200,
+            // 二维码样式
+            qr_style: {
+                fg_color: preset.fg,
+                bg_color: preset.bg,
+                error_correction: document.getElementById("qrEc").value,
+                box_size: parseInt(document.getElementById("qrBox").value, 10) || 8,
+                border: 2,
+            },
+        };
         const res = await fetch("/api/settings", {
             method: "POST",
             headers: Object.assign({ "Content-Type": "application/json" }, X.authHeaders()),
-            body: JSON.stringify({
-                site_name: document.getElementById("siteName").value,
-                root_path: document.getElementById("rootPath").value,
-                public_base_url: document.getElementById("publicBaseUrl").value,
-                cache_max_gb: parseInt(document.getElementById("cacheMaxGb").value, 10) || 0,
-                qr_style: {
-                    fg_color: preset.fg,
-                    bg_color: preset.bg,
-                    error_correction: document.getElementById("qrEc").value,
-                    box_size: parseInt(document.getElementById("qrBox").value, 10) || 8,
-                    border: 2,
-                },
-            }),
+            body: JSON.stringify(body),
         });
         if ((await res.json()).success) alert("保存成功");
     };
 
-    /** 拉取站点设置并刷新页面各处标题（页签/侧边栏/移动端顶栏）。 */
+    /** 拉取站点设置并刷新页面各处标题（页签/侧边栏/移动端顶栏）；
+     *  同时载入共享/上传弹窗的默认值（有效期/模式），供创建链接时预填。 */
     async function loadSiteSetting() {
         const settings = await X.getJSON("/api/settings");
         document.getElementById("pageTitle").innerText = settings.site_name;
         document.getElementById("siteTitle").innerText = settings.site_name;
         document.getElementById("sideTitle").innerText = settings.site_name;
         document.getElementById("mobileSiteTitle").innerText = "📁 " + settings.site_name;
+        // 共享/上传弹窗默认值（默认值缺失时用内置缺省，不阻断标题刷新）
+        shareDefaults = {
+            days: settings.default_share_days === undefined ? 7 : settings.default_share_days,
+            mode: settings.default_share_mode || "normal",
+        };
     }
 
     // ---------- 重命名 ----------

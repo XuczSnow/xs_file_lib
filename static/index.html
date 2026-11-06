@@ -126,8 +126,10 @@
 
             <!-- ② 共享管理面板（统一展示共享链接 + 访客上传链接） -->
             <div id="shareManagerPage" style="display:none">
-                <div class="share-header">
-                    <h3>🔗 共享与上传链接</h3>
+                <div class="page-head">
+                    <div class="page-title"><i class="bi bi-link-45deg page-icon"></i>
+                        <h3 class="mb-0">共享与上传链接</h3>
+                    </div>
                     <span class="share-count" id="shareCount">
                         0 个链接
                     </span>
@@ -136,54 +138,48 @@
             </div>
             <!-- ③ 用户管理面板（新增 / 删除） -->
             <div id="userManagerPage" style="display:none;">
-                <h3>🧑‍🤝‍🧑 用户管理</h3>
-                <div class="card p-3">
-                    <h5>新增用户</h5>
-                    <input id="newUsername" class="form-control mb-2" placeholder="用户名">
-                    <input id="newPassword" type="password" class="form-control mb-2" placeholder="密码">
-                    <h5>权限设置</h5>
-
-                    <div class="permission-list">
-                        <label>
-                            <input type="checkbox" value="upload">
-                            上传文件
-                        </label>
-                        <label>
-                            <input type="checkbox" value="download">
-                            下载文件
-                        </label>
-                        <label>
-                            <input type="checkbox" value="delete">
-                            删除文件
-                        </label>
-                        <label>
-                            <input type="checkbox" value="share">
-                            文件共享
-                        </label>
-                        <label>
-                            <input type="checkbox" value="share_manage">
-                            共享管理
-                        </label>
-                        <label>
-                            <input type="checkbox" value="user_manage">
-                            用户管理
-                        </label>
-                        <label>
-                            <input type="checkbox" value="system_manage">
-                            系统设置
-                        </label>
+                <div class="page-head">
+                    <div class="page-title"><i class="bi bi-people page-icon"></i>
+                        <h3 class="mb-0">用户管理</h3>
                     </div>
-                    <button class="btn btn-success" onclick="addUser()">
-                        新增用户
-                    </button>
                 </div>
-                <div class="card p-3">
-                    <h5>删除用户</h5>
-                    <table class="table">
+                <!-- 新增用户：用户名/密码双列 + 权限九宫格 -->
+                <div class="card p-3 setting-card">
+                    <div class="setting-card-title"><i class="bi bi-person-plus"></i> 新增用户</div>
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="setting-label">用户名</label>
+                            <input id="newUsername" class="form-control" placeholder="用户名">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="setting-label">密码</label>
+                            <input id="newPassword" type="password" class="form-control" placeholder="密码">
+                        </div>
+                        <div class="col-md-4 d-flex align-items-end">
+                            <button class="btn btn-success w-100" onclick="addUser()">
+                                <i class="bi bi-check-lg"></i> 新增用户
+                            </button>
+                        </div>
+                    </div>
+                    <label class="setting-label mt-3 mb-2">权限设置（勾选该用户可用的功能）</label>
+                    <div class="perm-grid">
+                        <label><input type="checkbox" value="upload"> 上传文件</label>
+                        <label><input type="checkbox" value="download"> 下载文件</label>
+                        <label><input type="checkbox" value="delete"> 删除文件</label>
+                        <label><input type="checkbox" value="share"> 文件共享</label>
+                        <label><input type="checkbox" value="share_manage"> 共享管理</label>
+                        <label><input type="checkbox" value="user_manage"> 用户管理</label>
+                        <label><input type="checkbox" value="system_manage"> 系统设置</label>
+                    </div>
+                </div>
+                <!-- 用户列表（删除） -->
+                <div class="card p-3 setting-card">
+                    <div class="setting-card-title"><i class="bi bi-person-x"></i> 现有用户</div>
+                    <table class="table dash-table setting-table mb-0">
                         <thead>
                             <tr>
                                 <th>用户名</th>
-                                <th>操作</th>
+                                <th class="text-end">操作</th>
                             </tr>
                         </thead>
                         <tbody id="userTable">
@@ -192,11 +188,13 @@
                 </div>
             </div>
 
-            <!-- ④ 系统设置面板（站点信息 / 二维码样式；数据看板已拆到独立页 /dashboard） -->
+            <!-- ④ 系统设置面板（站点信息 / 上传与共享 / 二维码样式 / 安全与性能；数据看板已拆到独立页 /dashboard） -->
             <div id="settingManagerPage" style="display:none;">
-                <div class="setting-page-head">
-                    <h3 class="mb-0">⚙️ 系统设置</h3>
-                    <div class="setting-page-actions">
+                <div class="page-head">
+                    <div class="page-title"><i class="bi bi-gear page-icon"></i>
+                        <h3 class="mb-0">系统设置</h3>
+                    </div>
+                    <div class="page-head-actions">
                         <a href="/dashboard" target="_blank" class="btn btn-outline-primary btn-sm" id="openDashboardBtn">
                             📊 访问数据看板
                         </a>
@@ -208,7 +206,7 @@
 
                 <!-- 站点信息 -->
                 <div class="card p-3 setting-card">
-                    <div class="setting-card-title"><i class="bi bi-gear"></i> 站点信息</div>
+                    <div class="setting-card-title"><i class="bi bi-house-gear"></i> 站点信息</div>
                     <div class="row g-3">
                         <div class="col-md-6">
                             <label class="setting-label">系统名称</label>
@@ -232,22 +230,92 @@
                     </div>
                 </div>
 
-                <!-- 二维码样式：配色预设下拉 + 纠错等级 + 模块尺寸；右上角实时真实二维码预览（编码 git 库地址） -->
+                <!-- 上传与共享：上传限制 + 链接默认值 -->
                 <div class="card p-3 setting-card">
-                    <div class="setting-card-title"><i class="bi bi-qr-code-scan"></i> 二维码样式
-                        <span id="qrPreviewWrap" class="setting-card-preview" title="当前配色下二维码预览（编码 git 库地址示例）">
-                            <img id="qrPreview" alt="二维码配色预览">
-                        </span>
-                    </div>
+                    <div class="setting-card-title"><i class="bi bi-cloud-arrow-up"></i> 上传与共享</div>
                     <div class="row g-3">
                         <div class="col-md-6">
-                            <label class="setting-label">配色方案（前景 / 背景 成对高级色板）</label>
-                            <select id="qrColor" class="form-select"></select>
-                            <div class="form-text">选择一种预设配色，前景与背景色同步生效；右上角二维码实时预览。</div>
+                            <label class="setting-label">上传单文件大小上限（MB）</label>
+                            <input id="uploadMaxMb" type="number" min="0" class="form-control">
+                            <div class="form-text">管理页上传与访客上传共用此上限；填 0 表示不限制。默认 100。</div>
                         </div>
                         <div class="col-md-6">
-                            <div class="row g-3">
+                            <label class="setting-label">允许上传的扩展名（逗号分隔）</label>
+                            <input id="uploadExtensions" class="form-control mono-input" placeholder="pdf,jpg,png,mp4,webm…">
+                            <div class="form-text">不带点的扩展名，大小写不敏感；留空 = 使用内置白名单（全类型放行可填 * 表示）。</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="setting-label">默认共享有效期（天）</label>
+                            <input id="defaultShareDays" type="number" min="1" class="form-control">
+                            <div class="form-text">创建共享/上传链接弹窗的预选项（仍可在弹窗里改）。默认 7。</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="setting-label">默认共享模式</label>
+                            <select id="defaultShareMode" class="form-select">
+                                <option value="normal">普通文件共享</option>
+                                <option value="album">相册模式</option>
+                            </select>
+                            <div class="form-text">创建共享弹窗的默认选项。</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 安全与性能：登录限流 / 会话有效期 / 日志上限 / 热写间隔 / 缩略图尺寸 -->
+                <div class="card p-3 setting-card">
+                    <div class="setting-card-title"><i class="bi bi-shield-check"></i> 安全与性能</div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="setting-label">登录失败锁定阈值（次）</label>
+                            <input id="loginMaxFailures" type="number" min="1" class="form-control">
+                            <div class="form-text">同一 IP 连续失败达到该次数后进入冷却期。默认 5。</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="setting-label">登录冷却时长（秒）</label>
+                            <input id="loginCooldownSec" type="number" min="0" class="form-control">
+                            <div class="form-text">触发锁定后的拒绝时长；0 = 不锁。默认 300（5 分钟）。</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="setting-label">管理会话有效期（小时）</label>
+                            <input id="tokenTtlHours" type="number" min="1" class="form-control">
+                            <div class="form-text">登录后管理 token 的存活时长，超时需重新登录。默认 12。</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="setting-label">访问日志保留条数</label>
+                            <input id="accessLogMax" type="number" min="0" class="form-control">
+                            <div class="form-text">滚动保留最近 N 条访问日志（供数据看板）；0 = 不限制。默认 5000。</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="setting-label">热写落盘间隔（秒）</label>
+                            <input id="hotFlushSec" type="number" min="5" class="form-control">
+                            <div class="form-text">view_count / 访问日志从内存聚合落盘的间隔。默认 30。</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="setting-label">缩略图尺寸（列表 / 预览，短边像素）</label>
+                            <div class="row g-2">
                                 <div class="col">
+                                    <input id="thumbSizeList" type="number" min="16" max="4096" class="form-control" placeholder="600">
+                                </div>
+                                <div class="col">
+                                    <input id="thumbSizePreview" type="number" min="16" max="4096" class="form-control" placeholder="1200">
+                                </div>
+                            </div>
+                            <div class="form-text">改动后新生成的缩略图按新尺寸，旧缓存仍有效。</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 二维码样式：左侧配色/纠错/模块尺寸表单，右侧真实二维码预览（编码 git 库地址） -->
+                <div class="card p-3 setting-card">
+                    <div class="setting-card-title"><i class="bi bi-qr-code-scan"></i> 二维码样式</div>
+                    <div class="row g-4 align-items-center">
+                        <div class="col-md-8">
+                            <div class="row g-3">
+                                <div class="col-12">
+                                    <label class="setting-label">配色方案（前景 / 背景 成对高级色板）</label>
+                                    <select id="qrColor" class="form-select"></select>
+                                    <div class="form-text">选择一种预设配色，前景与背景色同步生效；右侧二维码实时预览。</div>
+                                </div>
+                                <div class="col-sm-6">
                                     <label class="setting-label">纠错等级（越高容错越强，图案越密）</label>
                                     <select id="qrEc" class="form-select">
                                         <option value="L">L（低）</option>
@@ -256,10 +324,17 @@
                                         <option value="H">H（最高）</option>
                                     </select>
                                 </div>
-                                <div class="col">
+                                <div class="col-sm-6">
                                     <label class="setting-label">模块尺寸（px，越大图案越大越清晰）</label>
                                     <input id="qrBox" type="number" min="1" max="32" class="form-control">
                                 </div>
+                            </div>
+                        </div>
+                        <!-- 预览区：随配色/纠错/模块尺寸即时刷新（真实二维码，编码 git 库地址示例内容） -->
+                        <div class="col-md-4">
+                            <div class="qr-preview-box" id="qrPreviewWrap">
+                                <img id="qrPreview" alt="二维码配色预览">
+                                <div class="qr-preview-cap">实时预览 · 编码 git 库地址</div>
                             </div>
                         </div>
                     </div>

@@ -33,9 +33,9 @@ except Exception:  # pragma: no cover - bcrypt 缺失时退回 SHA-256
 # 令牌密钥：优先环境变量 XS_TOKEN_SECRET（多实例/多机部署时注入同一密钥）；
 # 否则使用 config/secret.key（首次启动随机生成 32 字节并持久化，仅存在于
 # 部署机磁盘、不随代码分发），杜绝"源码里写死密钥"导致 token 可离线伪造。
-# 默认有效期 12 小时（秒）
-_TOKEN_TTL = int(os.environ.get("XS_TOKEN_TTL", str(12 * 3600)))
 _SECRET_CACHE = None
+# token 默认有效期 12 小时（可被设置项 token_ttl_hours 覆盖，0=使用 12h 默认）
+_DEFAULT_TOKEN_TTL = 12 * 3600
 
 
 def _token_secret() -> str:
@@ -49,6 +49,18 @@ def _token_secret() -> str:
             from utils import storage
             _SECRET_CACHE = storage.load_or_create_secret()
     return _SECRET_CACHE
+
+
+def _token_ttl() -> int:
+    """会话 token 有效期（秒）：设置项 token_ttl_hours 优先，缺省 12 小时。"""
+    try:
+        from utils import storage
+        hours = float((storage.load_config() or {}).get("token_ttl_hours", 12))
+        if hours > 0:
+            return int(hours * 3600)
+    except Exception:
+        pass
+    return int(os.environ.get("XS_TOKEN_TTL", str(_DEFAULT_TOKEN_TTL)))
 
 
 # ==================== 路径穿越守卫 ====================
@@ -124,8 +136,14 @@ class _RateLimiter:
                 rec["fails"] = 0
                 rec["locked_until"] = 0
 
+    def reconfigure(self, max_failures: int, cooldown: int):
+        """运行时调整限流参数（设置页保存后热生效，无需重启）。"""
+        with self._lock:
+            self.max_failures = max(1, int(max_failures))
+            self.cooldown = max(0, int(cooldown))
 
-# 单例限流器（进程内共享）
+
+# 单例限流器（进程内共享）；参数在 storage.init_config / 保存设置时按配置刷新
 _login_limiter = _RateLimiter(max_failures=5, cooldown=300)
 
 
@@ -161,7 +179,7 @@ def issue_token(username: str, permissions: list) -> str:
     payload = {
         "sub": username,
         "perms": permissions or [],
-        "exp": int(time.time()) + _TOKEN_TTL,
+        "exp": int(time.time()) + _token_ttl(),
     }
     raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
     import base64
@@ -267,9 +285,10 @@ def verify_share_access(token: str, share_id: str):
 
 # ==================== 上传限制 ====================
 
-# 单次上传大小上限（字节）与允许扩展名白名单（管理页/访客上传共用）
-MAX_UPLOAD_BYTES = int(os.environ.get("XS_MAX_UPLOAD_MB", "100")) * 1024 * 1024
-ALLOWED_EXTENSIONS = [
+# 上传大小上限与扩展名白名单的【默认值】（可被 config.json 的
+# upload_max_mb / upload_extensions 覆盖；环境变量仅作部署兜底）。
+_DEFAULT_UPLOAD_MAX_BYTES = int(os.environ.get("XS_MAX_UPLOAD_MB", "100")) * 1024 * 1024
+DEFAULT_ALLOWED_EXTENSIONS = [
     # 文档
     "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "csv",
     "json", "log",
@@ -280,11 +299,50 @@ ALLOWED_EXTENSIONS = [
     # 压缩包
     "zip", "rar", "7z", "tar", "gz",
     # 代码/其它
-    "py", "js", "html", "css", "csv",
+    "py", "js", "html", "css",
 ]
 
 
+def _config():
+    """惰性读 config.json（避免模块导入期循环依赖）；失败返回空 dict。"""
+    try:
+        from utils import storage
+        return storage.load_config() or {}
+    except Exception:
+        return {}
+
+
+def max_upload_bytes() -> int:
+    """单次上传大小上限（字节）：设置项 upload_max_mb 优先，缺省 100MB。
+    0 表示不限制（仍保留扩展名白名单校验）；键缺失或非法值回落到默认。"""
+    cfg = _config()
+    if "upload_max_mb" in cfg:
+        try:
+            mb = float(cfg["upload_max_mb"])
+            return int(max(0, mb) * 1024 * 1024)
+        except (ValueError, TypeError):
+            pass
+    return _DEFAULT_UPLOAD_MAX_BYTES
+
+
+def allowed_extensions() -> list:
+    """允许上传的扩展名白名单（小写、无点）：
+    设置项 upload_extensions（逗号分隔字符串）优先，缺省用内置列表。
+    空串 = 不限制扩展名（全放行，仅校验大小）。"""
+    cfg = _config()
+    raw = cfg.get("upload_extensions")
+    if isinstance(raw, str) and raw.strip():
+        return [x.strip().lower().lstrip(".") for x in raw.split(",") if x.strip()]
+    if isinstance(raw, list) and raw:
+        return [str(x).strip().lower().lstrip(".") for x in raw if str(x).strip()]
+    return list(DEFAULT_ALLOWED_EXTENSIONS)
+
+
 def extension_allowed(filename: str) -> bool:
-    """按扩展名白名单判断文件是否允许上传（无扩展名视为不允许）。"""
+    """按扩展名白名单判断文件是否允许上传（无扩展名视为不允许）。
+    白名单随设置项 upload_extensions 动态变化；白名单含 "*" 时全类型放行。"""
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-    return ext in ALLOWED_EXTENSIONS
+    if not ext:
+        return False
+    exts = allowed_extensions()
+    return "*" in exts or ext in exts

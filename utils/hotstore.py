@@ -6,21 +6,27 @@
 
 现改为：
 - 请求路径只写【进程内存】（dict / list + 锁），微秒级；
-- 后台守护线程每 30s 把内存缓冲【原子合并】落盘一次
+- 后台守护线程按固定间隔把内存缓冲【原子合并】落盘一次
   （view_count 累加进 links.json；日志追加进 access_log.json 并滚动裁剪）；
 - 进程退出时 atexit 再 flush 一次，保证不丢。
 
 线程安全：计数/追加用自身锁；落盘复用 storage._save_lock 与
 storage.load_links/load_json，"读-改-写"在锁内完成，
 与并发 save_shares/save_links 不会交错写坏文件。
+
+flush 间隔由设置项 hot_flush_sec 控制（默认 30s）：启动时与每次保存
+设置后调用 set_flush_interval()，动态调整，无需重启进程。
 """
 import atexit
 import threading
 
 from . import storage
 
-# 后台 flush 间隔（秒）
+# 后台 flush 间隔（秒，默认 30；可被设置项 hot_flush_sec 覆盖）
 FLUSH_INTERVAL = 30
+
+# 访问日志滚动上限：默认 5000，可被设置项 access_log_max 覆盖
+# （动态读取 storage.access_log_max()，不在此硬编码）
 
 _view_counter: dict = {}     # share_id -> 未落盘的 view_count 增量
 _view_lock = threading.Lock()
@@ -31,6 +37,7 @@ _log_lock = threading.Lock()
 _flush_lock = threading.Lock()          # 串行化落盘本身
 _flush_started = False
 _flush_thread: threading.Thread = None
+_flush_interval = FLUSH_INTERVAL        # 后台线程实际采用的间隔（可被 set_flush_interval 调整）
 
 
 def bump_view_count(share_id: str):
@@ -81,10 +88,12 @@ def flush() -> dict:
 
         # ---- 访问日志追加 + 滚动裁剪（读-改-写由 apply_access_log 在锁内原子完成）----
         if logs:
+            limit = storage.access_log_max()   # 动态上限（设置项 access_log_max，默认 5000）
+
             def _apply_logs(cur: list) -> list:
                 cur.extend(logs)
-                if len(cur) > storage.ACCESS_LOG_MAX:
-                    cur = cur[-storage.ACCESS_LOG_MAX:]
+                if limit > 0 and len(cur) > limit:
+                    cur = cur[-limit:]
                 return cur
             storage.apply_access_log(_apply_logs)
 
@@ -93,19 +102,40 @@ def flush() -> dict:
 
 def _flush_loop():
     import time
+    global _flush_interval
     while True:
-        time.sleep(FLUSH_INTERVAL)
+        time.sleep(_flush_interval)
         try:
             flush()
         except Exception:
             pass  # 落盘失败（磁盘满等）不崩后台线程，下轮重试
 
 
+def set_flush_interval(seconds: int):
+    """动态调整后台 flush 间隔（设置页保存后热生效，无需重启）。最小 5s。"""
+    global _flush_interval
+    try:
+        s = int(seconds)
+        if s > 0:
+            _flush_interval = max(5, s)
+    except (ValueError, TypeError):
+        pass
+
+
+def apply_from_config():
+    """从 config.json 读取热写间隔并应用到后台线程（设置页保存后调用）。"""
+    try:
+        set_flush_interval((storage.load_config() or {}).get("hot_flush_sec", FLUSH_INTERVAL))
+    except Exception:
+        pass
+
+
 def start_flusher():
     """启动后台 flush 线程 + atexit 兜底（幂等，由 storage.init_config 调用）。"""
-    global _flush_started, _flush_thread
+    global _flush_started, _flush_thread, _flush_interval
     if _flush_started:
         return
+    apply_from_config()
     _flush_started = True
     _flush_thread = threading.Thread(target=_flush_loop, daemon=True)
     _flush_thread.start()

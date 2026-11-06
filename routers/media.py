@@ -1,4 +1,9 @@
-"""媒体缩略图：图片缩略图（600/1200）与视频首帧缩略图。"""
+"""媒体缩略图：图片缩略图（列表/预览两档，尺寸可配置）与视频首帧缩略图。
+
+图片两档尺寸由 config.json 的 thumb_size_list（默认 600）/
+thumb_size_preview（默认 1200）控制，按"短边"缩放；缓存目录随之命名
+（img_{size}），改尺寸后自动生成新目录，旧目录成为可再生产缓存（无需迁移）。
+"""
 import os
 
 from fastapi import APIRouter, HTTPException
@@ -9,6 +14,15 @@ import av
 from utils import storage, security
 
 router = APIRouter(tags=["media"])
+
+
+def _thumb_size(key: str, default: int) -> int:
+    """按配置取缩略图短边像素（非法/缺省回落到默认值，并钳制在 16~4096）。"""
+    try:
+        v = int((storage.load_config() or {}).get(key, default))
+        return max(16, min(4096, v))
+    except (ValueError, TypeError):
+        return default
 
 
 def _create_thumbnail(source, target, short_side=600):
@@ -64,20 +78,22 @@ def _generate_video_thumbnail(source_path, thumb_path):
 
 @router.get("/api/thumbnail/{filepath:path}")
 def get_thumbnail(filepath: str):
-    """列表缩略图（短边 600）。safe_join 防路径穿越。"""
+    """列表缩略图（短边可配，默认 600）。safe_join 防路径穿越。"""
+    size = _thumb_size("thumb_size_list", 600)
     source = security.safe_join(storage.UPLOAD_DIR, filepath)
     if source is None or not os.path.isfile(source):
         raise HTTPException(status_code=404, detail="图片不存在")
-    return _image_proxy_from_source(source, filepath, 600)
+    return _image_proxy_from_source(source, filepath, size)
 
 
 @router.get("/api/preview-image/{filepath:path}")
 def get_preview_image(filepath: str):
-    """预览大图（短边 1200）。safe_join 防路径穿越。"""
+    """预览大图（短边可配，默认 1200）。safe_join 防路径穿越。"""
+    size = _thumb_size("thumb_size_preview", 1200)
     source = security.safe_join(storage.UPLOAD_DIR, filepath)
     if source is None or not os.path.isfile(source):
         raise HTTPException(status_code=404, detail="图片不存在")
-    return _image_proxy_from_source(source, filepath, 1200)
+    return _image_proxy_from_source(source, filepath, size)
 
 
 @router.get("/api/video-thumbnail/{filepath:path}")

@@ -66,17 +66,36 @@ xs_file_lib/
 
 ## 安装与启动
 
+**环境要求**
+- Python ≥ 3.10（本项目在 3.14 验证通过）
+- 系统已安装 **ffmpeg**（视频首帧缩略图由 PyAV 调用，纯 `pip install` 后若 `import av` 报 `libav*` 缺失，需先装 ffmpeg 全功能包并加入 PATH；Windows 可直接用 `winget install Gyan.FFmpeg`）
+
+**步骤**
+
 ```bash
+# 1) 建虚拟环境并安装依赖（版本已锁定在 requirements.txt）
+python -m venv .venv
+# Windows: .venv\Scripts\Activate      macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
 
-# 本地开发（--reload）
+# 2) 本地开发（--reload）
 uvicorn main:app --reload
 
-# 生产
+# 3) 生产
 uvicorn main:app --host 0.0.0.0 --port 8000
 ```
 
-访问 `http://127.0.0.1:8000`。默认账号 `admin` / `admin123`（首次启动生成，请登录后尽快改密）。
+访问 `http://127.0.0.1:8000`。
+
+**首次启动会自动完成**（`storage.init_config()` 兜底，缺失的目录与默认配置全部自动创建，无需手动建 `config/`、`data/`、`cache/`）：
+- 目录：`uploads/`、`config/`、`data/`、`cache/thumbs/`、`cache/zips/`
+- 文件：`config/config.json`（默认设置）、`data/users.json`（默认账号）、`data/links.json`、`data/access_log.json`、`data/secret.key`（随机 HMAC 密钥）
+
+**上线前建议核对的默认项**（设置页"⚙️ 系统设置"）：
+- **默认账号 `admin` / `admin123`（首次生成，请立即在"用户管理"改密）**
+- `public_base_url`（公网访问地址，二维码编码完整 URL 用，留空则按请求头推断）
+- `cache_max_gb`（zip 缓存上限，默认 10G）、`thumb_size_list` / `thumb_size_preview`（缩略图尺寸）
+- 上传上限 `upload_max_mb` 与扩展名白名单 `upload_extensions`（默认 100MB + 内置白名单）
 
 ## 安全加固
 

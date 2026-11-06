@@ -97,7 +97,8 @@ async def guest_upload(
     os.makedirs(target_dir, exist_ok=True)
     save_path = os.path.join(target_dir, security.safe_filename(file.filename))
 
-    # 流式写入 + 大小上限
+    # 流式写入 + 大小上限（0=不限制）
+    limit = security.max_upload_bytes()
     written = 0
     with open(save_path, "wb") as buffer:
         while True:
@@ -105,7 +106,7 @@ async def guest_upload(
             if not chunk:
                 break
             written += len(chunk)
-            if written > security.MAX_UPLOAD_BYTES:
+            if limit > 0 and written > limit:
                 buffer.write(b"")
                 os.remove(save_path)
                 return {"success": False, "message": "文件超过大小限制"}

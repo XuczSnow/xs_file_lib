@@ -1,10 +1,14 @@
-fastapi
-uvicorn
-av
-Pillow
-python-multipart
-qrcode
-bcrypt
+# 运行依赖（版本已锁定，保证半年后重新 pip install 拉到兼容版本）
+# 注意：PyAV(av) 运行依赖系统已安装的 ffmpeg 编解码库。纯 pip 安装后若
+# import av 报 libav* 缺失，需先装系统 ffmpeg（Windows 可 winget install Gyan.FFmpeg）。
+fastapi==0.139.2
+uvicorn==0.51.0
+av==19.0.2
+Pillow==12.3.0
+python-multipart==0.0.32
+qrcode==8.2
+bcrypt==5.0.0
+
 # 测试（回归套件 tests/，E1）
-pytest
-httpx
+pytest==9.2.0
+httpx==0.28.1
