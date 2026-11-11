@@ -2,7 +2,6 @@
 import json
 import os
 import shutil
-from datetime import datetime
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
@@ -10,55 +9,6 @@ from fastapi.responses import FileResponse
 from utils import storage, filetree, security
 
 router = APIRouter(tags=["files"])
-
-
-@router.get("/api/files")
-def get_files(username: str):
-    result = {}
-
-    # 目录不存在时返回空结果，避免首次启动/路径配置错误直接 500
-    if not os.path.isdir(storage.UPLOAD_DIR):
-        return result
-
-    folder_permissions = storage.load_folder_permissions()
-
-    for root, dirs, files in os.walk(storage.UPLOAD_DIR):
-        rel_dir = os.path.relpath(root, storage.UPLOAD_DIR)
-        folder_name = rel_dir
-
-        if folder_name in folder_permissions:
-            allowed_users = folder_permissions[folder_name]
-            if allowed_users and username not in allowed_users:
-                continue
-
-        result[rel_dir] = {}
-
-        folder_size = 0
-        file_count = 0
-        folder_count = len(dirs)
-        result[rel_dir]["files"] = []
-
-        for file in files:
-            full_path = os.path.join(root, file)
-            folder_size += os.path.getsize(full_path)
-            file_count += 1
-            result[rel_dir]["files"].append({
-                "name": file,
-                "path": os.path.join(rel_dir, file).replace("\\", "/"),
-                "size": os.path.getsize(full_path),
-                "modified": datetime.fromtimestamp(
-                    os.path.getmtime(full_path)
-                ).strftime("%Y-%m-%d %H:%M"),
-                "extension": os.path.splitext(file)[1][1:].lower()
-            })
-
-        result[rel_dir]["_meta"] = {
-            "file_count": file_count,
-            "folder_count": folder_count,
-            "size": folder_size,
-        }
-
-    return result
 
 
 @router.get("/api/files/tree")

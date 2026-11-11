@@ -16,6 +16,7 @@
   require_token 中间件校验；公开分享页 / 访客上传页 / 媒体缩略图保持开放。
 """
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -34,6 +35,20 @@ from routers import (
 from utils import security, storage
 
 app = FastAPI()
+
+# ---- 跨域放行（"资源访问地址" 场景）----
+# 设置里的"资源访问地址"（mediaBase，如外网/IPv6/隧道/localhost）与页面源
+# 不一致时，dash.js 拉 manifest/分片（XHR + Range 头）就是跨域请求：
+# 没有 ACAO 头浏览器整段 block（Range 非"简单请求头"，还会先触发 OPTIONS
+# 预检——所以必须用 CORSMiddleware 而非逐端点响应头，前者自动应答预检）。
+# 共享媒体靠 share_id/access 令牌鉴权（令牌在 query，不用 cookie），放行 *。
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["Content-Range", "Content-Length", "Content-Type", "ETag"],
+)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
@@ -135,4 +150,4 @@ def dashboard_page():
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host=None, port=8000)

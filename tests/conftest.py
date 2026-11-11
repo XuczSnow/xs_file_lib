@@ -28,6 +28,7 @@ def app_server():
     storage.UPLOAD_DIR = os.path.join(tmp, "uploads")
     storage.THUMB_DIR = os.path.join(tmp, "cache", "thumbs")
     storage.CACHE_ZIP_DIR = os.path.join(tmp, "cache", "zips")
+    storage.DASH_DIR = os.path.join(tmp, "cache", "dash")
     storage.USER_CONF = os.path.join(tmp, "data", "users.json")
     storage.FOLDER_PERMS_CONF = os.path.join(tmp, "config", "folder_permissions.json")
     storage.ACCESS_LOG_CONF = os.path.join(tmp, "data", "access_log.json")

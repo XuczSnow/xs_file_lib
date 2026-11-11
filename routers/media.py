@@ -7,7 +7,7 @@ thumb_size_preview（默认 1200）控制，按"短边"缩放；缓存目录随�
 import os
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from PIL import Image
 import av
 
@@ -26,9 +26,11 @@ def _thumb_size(key: str, default: int) -> int:
 
 
 def _create_thumbnail(source, target, short_side=600):
-    """按短边缩放生成 JPEG 缩略图。"""
+    """按短边缩放生成 WebP 缩略图（比 JPEG 小 30~50%；保留透明通道）。"""
     img = Image.open(source)
-    if img.mode in ("RGBA", "P"):
+    if img.mode == "P":
+        img = img.convert("RGBA")
+    elif img.mode not in ("RGB", "RGBA"):
         img = img.convert("RGB")
 
     width, height = img.size
@@ -42,7 +44,7 @@ def _create_thumbnail(source, target, short_side=600):
         new_height = height
 
     img = img.resize((new_width, new_height), Image.LANCZOS)
-    img.save(target, format="JPEG", quality=75, optimize=True)
+    img.save(target, format="WEBP", quality=80, method=4)
 
 
 def _image_proxy_from_source(source: str, filepath: str, short_side: int):
@@ -55,23 +57,39 @@ def _image_proxy_from_source(source: str, filepath: str, short_side: int):
     thumb_root = os.path.join(
         storage.THUMB_DIR, f"img_{short_side}"
     )
-    thumb_path = os.path.join(thumb_root, base_name + ".jpg")
+    thumb_path = os.path.join(thumb_root, base_name + ".webp")
 
     os.makedirs(os.path.dirname(thumb_path), exist_ok=True)
 
     if not os.path.exists(thumb_path):
-        _create_thumbnail(source, thumb_path, short_side)
+        # 原子写：先写 .tmp 再 replace，避免并发请求读到半截缓存；
+        # 源图损坏时清理残片并向调用方返回 404（而非 500）
+        tmp_path = thumb_path + ".tmp"
+        try:
+            _create_thumbnail(source, tmp_path, short_side)
+            os.replace(tmp_path, thumb_path)
+        except Exception:
+            try:
+                if os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except OSError:
+                pass
+            raise HTTPException(status_code=404, detail="图片无法生成缩略图")
 
     # 缩略图是内容级稳定缓存：让浏览器/CDN（Cloudflare）长期复用，不再回源
-    return FileResponse(thumb_path, headers={"Cache-Control": "public, max-age=2592000"})
+    return FileResponse(thumb_path, media_type="image/webp",
+                        headers={"Cache-Control": "public, max-age=2592000"})
 
 
 def _generate_video_thumbnail(source_path, thumb_path):
-    """取视频首帧存为 JPEG。"""
+    """取视频首帧存为 WebP；源无视频流 / 无法解码时抛异常（由调用方兜底 404）。"""
     container = av.open(source_path)
     try:
-        frame = next(container.decode(video=0))
-        frame.to_image().save(thumb_path, quality=80)
+        try:
+            frame = next(container.decode(video=0))
+        except StopIteration:
+            raise ValueError("源无视频流（纯音频/空轨道）")
+        frame.to_image().save(thumb_path, format="WEBP", quality=80, method=4)
     finally:
         container.close()
 
@@ -104,10 +122,23 @@ def video_thumbnail(filepath: str):
         raise HTTPException(status_code=404, detail="视频不存在")
 
     thumb_root = os.path.join(storage.THUMB_DIR, "video")
-    thumb_file = os.path.join(thumb_root, filepath + ".jpg")
+    thumb_file = os.path.join(thumb_root, filepath + ".webp")
     os.makedirs(os.path.dirname(thumb_file), exist_ok=True)
 
     if not os.path.exists(thumb_file):
-        _generate_video_thumbnail(source, thumb_file)
+        # 原子写：先写 .tmp 再 replace，避免并发请求读到半截缓存；
+        # 源无视频流 / 损坏时清理残片并返回 404（前端缩略图占位兜底）
+        tmp_file = thumb_file + ".tmp"
+        try:
+            _generate_video_thumbnail(source, tmp_file)
+            os.replace(tmp_file, thumb_file)
+        except Exception:
+            try:
+                if os.path.exists(tmp_file):
+                    os.remove(tmp_file)
+            except OSError:
+                pass
+            return JSONResponse({"success": False}, status_code=404)
 
-    return FileResponse(thumb_file, headers={"Cache-Control": "public, max-age=2592000"})
+    return FileResponse(thumb_file, media_type="image/webp",
+                        headers={"Cache-Control": "public, max-age=2592000"})

@@ -44,6 +44,7 @@
      */
     window.onload = async function () {
         await X.loadSiteSetting();
+        await X.loadMediaBase();   // IPv6 媒体改道：生成任何资源/下载 URL 前探测可达性
 
         // 共享页 URL 形如 /share/{share_id}，末段即 ID
         currentShareId = window.location.pathname.split("/").pop();
@@ -137,27 +138,71 @@
         if (data.type === "file") {
             let u = "/api/share-download/" + data.share_id;
             if (currentAccess) u += "?access=" + encodeURIComponent(currentAccess);
-            return u;
+            return X.resolveUrl(u);
         }
         // file.path 是相对 UPLOAD_DIR 的全路径（共享页 tree 已统一）
         const rel = file.path ? file.path : (data.name + "/" + file.name);
         let u = "/api/share-folder-download/" + data.share_id + "/" +
             encodeURIComponent(rel);
         if (currentAccess) u += "?access=" + encodeURIComponent(currentAccess);
-        return u;
+        return X.resolveUrl(u);
+    }
+
+    /**
+     * 打开视频播放页 /share/video/{id}/{相对共享根路径}（文件夹 / 单文件共享共用）。
+     * 视频预览统一走播放页（选集/DASH/连播），不再在预览弹窗内嵌 <video>。
+     * 单文件共享的 rel 即文件名；设密码时携带 access 令牌（免重新验证）。
+     */
+    function openVideoPage(rel) {
+        let url = "/share/video/" + currentShareId + "/" + encodeURIComponent(rel);
+        if (currentAccess) url += "?access=" + encodeURIComponent(currentAccess);
+        window.location.href = url;
+    }
+
+    /**
+     * 按扩展名给"丰富的文件类型图标"（不同文件用不同图标）：
+     * 视频 🎬 / 图片 🖼️ / 音频 🎵 走 XSLib 白名单；其余按常见类型映射
+     * （PDF/文档/表格/演示/压缩包/脚本/代码…），兜底 📄。
+     * 单文件卡片与文件夹树状行共用，保证同类文件显示一致的图标。
+     */
+    function fileIconByExt(ext) {
+        const k = String(ext || "").toLowerCase();
+        if (X.VIDEO_EXTS.includes(k)) return "🎬";
+        if (X.IMAGE_EXTS.includes(k)) return "🖼️";
+        if (X.AUDIO_EXTS.includes(k)) return "🎵";
+        const map = {
+            pdf: "📕",
+            doc: "📄", docx: "📄",
+            txt: "📝", md: "📝", log: "📝",
+            xls: "📊", xlsx: "📊", csv: "📊",
+            ppt: "📽️", pptx: "📽️",
+            zip: "🗜️", rar: "🗜️", "7z": "🗜️", tar: "🗜️", gz: "🗜️",
+            json: "🧾", xml: "🧾",
+            exe: "⚙️", dll: "⚙️",
+            py: "🐍", js: "🟨", ts: "🟦", html: "🌐", css: "🎨",
+        };
+        return map[k] || "📄";
     }
 
     // ---------- 普通文件夹（树状） ----------
 
     /* 单条文件行：缩进由 CSS 嵌套 .node-content 层级控制，不用内联 padding */
     function shareFileRowHtml(file, data) {
-        if (X.IMAGE_EXTS.includes(file.extension || X.getExt(file.name))) {
+        const ext = file.extension || X.getExt(file.name);
+        const isVideo = X.VIDEO_EXTS.includes(ext);
+        // 视频文件不进灯箱，改走播放页；图片接入灯箱集合
+        if (!isVideo && X.IMAGE_EXTS.includes(ext)) {
             imageFiles.push({ path: file.path, name: file.name });
         }
+        // 视频 → 文件名可点击跳播放页（data-video，相对共享根）；图片/其它 → 预览（data-preview）
+        const rel = isVideo ? fileRelPath(file, data) : "";
+        const nameAttr = isVideo
+            ? `data-video="${esc(rel)}"`
+            : `data-preview="${esc(file.path)}"`;
         return `
         <div class="share-file-row tree-share-file">
-            <div class="share-file-name" data-preview="${esc(file.path)}">
-                📄 ${esc(file.name)}
+            <div class="share-file-name" ${nameAttr}>
+                ${fileIconByExt(ext)} ${esc(file.name)}
             </div>
             <div class="share-file-tags">
                 <div class="share-file-tag">${X.formatSize(file.size)}</div>
@@ -201,13 +246,36 @@
         // 单文件共享：直接一行下载（设密码时携带 access 令牌）
         let singleDlUrl = "/api/share-download/" + data.share_id;
         if (currentAccess) singleDlUrl += "?access=" + encodeURIComponent(currentAccess);
+        singleDlUrl = X.resolveUrl(singleDlUrl);
+        // 单文件共享：与多文件（文件夹树）同口径的一行卡片——
+        // 缩略图/图标 + 可点击文件名 + 大小/类型标签 + 下载按钮。
+        //   - 视频：点文件名跳视频播放页（/share/video/{id}/{basename}，后端 file 型
+        //     视频流端点已支持，见 share_media._resolve_share_video_path），不设播放按钮；
+        //   - 图片：点文件名进灯箱预览（接入 imageFiles 集合）；
+        //   - 其它：点文件名走通用预览（preview.js）。
+        // 设密码时视频页链接携带 access 令牌（免重新验证）。
         if (data.type === "file") {
+            const ext = (data.files && data.files[0] && data.files[0].extension)
+                || X.getExt(data.name);
+            const isVideo = X.VIDEO_EXTS.includes(ext);
+            const isImage = X.IMAGE_EXTS.includes(ext);
+            // 图片接入灯箱（预览大图集合）
+            if (isImage) imageFiles.push({ path: data.path, name: data.name });
+            // 与文件夹树状行同口径：类型图标直接内联在文件名前（正常 emoji 尺寸，不用大 chip）
+            const icon = fileIconByExt(ext);
+            // 可点击文件名：视频 → data-video（播放页），图片/其它 → data-preview（灯箱/通用预览）
+            const nameAttr = isVideo
+                ? `data-video="${esc(data.name)}"`
+                : `data-preview="${esc(data.path)}"`;
             fileCard.innerHTML = `
                 <div class="folder-header"><h4>${esc(data.name)}</h4></div>
-                <div class="share-file-row">
-                    <div class="share-file-name">📄 ${esc(data.path)}</div>
-                    <a href="${singleDlUrl}"
-                       class="btn btn-primary btn-sm" target="_blank">下载</a>
+                <div class="share-file-row single-file-row">
+                    <div class="share-file-name" ${nameAttr}>${icon} ${esc(data.path)}</div>
+                    <div class="share-file-tags">
+                        <div class="share-file-tag">${X.formatSize((data.files && data.files[0] && data.files[0].size) || 0)}</div>
+                        <div class="share-file-tag">${esc(ext.toUpperCase())}</div>
+                    </div>
+                    <a href="${singleDlUrl}" class="btn btn-primary btn-sm" target="_blank">下载</a>
                 </div>`;
             return;
         }
@@ -236,6 +304,12 @@
 
     /** 文件夹列表：事件委托处理预览、打包与树节点折叠（collapsed class 驱动）。 */
     function onFileCardClick(e) {
+        // 视频（单文件共享的一行卡片）：点文件名跳视频播放页
+        const videoEl = e.target.closest("[data-video]");
+        if (videoEl) {
+            openVideoPage(videoEl.dataset.video);
+            return;
+        }
         const previewEl = e.target.closest("[data-preview]");
         if (previewEl) {
             previewFile(previewEl.dataset.preview, imageFiles);
@@ -274,7 +348,7 @@
             bootstrap.Modal
                 .getInstance(document.getElementById("zipLoadingModal"))
                 .hide();
-            window.location = "/api/share-folder-zip-download/" + data.task_id;
+            window.location = X.resolveUrl("/api/share-folder-zip-download/" + data.task_id);
         } catch (e) {
             bootstrap.Modal
                 .getInstance(document.getElementById("zipLoadingModal"))
@@ -367,7 +441,7 @@
     function albumImageCardHtml(file, data) {
         const fullPath = file.path || (data.name + "/" + file.name);
         const rel = fileRelPath(file, data);
-        const thumbUrl = "/api/thumbnail/" + encodeURIComponent(fullPath);
+        const thumbUrl = X.resolveUrl("/api/thumbnail/" + encodeURIComponent(fullPath));
         return `
             <div class="album-item" data-preview="${esc(fullPath)}"
                  data-type="photo" data-rel="${esc(rel)}">
@@ -384,7 +458,7 @@
     function albumVideoCardHtml(file, data) {
         const fullPath = file.path || (data.name + "/" + file.name);
         const rel = fileRelPath(file, data);
-        const thumbUrl = "/api/video-thumbnail/" + encodeURIComponent(fullPath);
+        const thumbUrl = X.resolveUrl("/api/video-thumbnail/" + encodeURIComponent(fullPath));
         return `
             <div class="video-card" data-video="${esc(rel)}"
                  data-type="video" data-rel="${esc(rel)}">
@@ -465,7 +539,7 @@
                 const img = imageFiles[Math.floor(i * step) % imageFiles.length];
                 return `<img class="album-cover-image album-cover-slide"
                             style="animation-delay:${i * 3.2}s"
-                            src="/api/preview-image/${encodeURIComponent(img.path)}" alt="">`;
+                            src="${X.resolveUrl("/api/preview-image/" + encodeURIComponent(img.path))}" alt="">`;
             }).join("");
         }
         const bannerInner = imageFiles.length > 0
@@ -650,13 +724,10 @@
             previewFile(previewEl.dataset.preview, visibleAlbumPhotos());
             return;
         }
-        // 视频播放：同标签页跳转到播放页（不使用新窗口，浏览器可正常返回）
+        // 视频预览：跳转到视频播放页（选集/DASH/连播），不再内嵌 <video> 预览框
         const videoEl = e.target.closest("[data-video]");
         if (videoEl) {
-            let url = "/share/video/" + currentShareId + "/" +
-                encodeURIComponent(videoEl.dataset.video);
-            if (currentAccess) url += "?access=" + encodeURIComponent(currentAccess);
-            window.location.href = url;
+            openVideoPage(videoEl.dataset.video);
             return;
         }
         // 类型 pill（全部/图片/视频）：与当前目录组合筛选

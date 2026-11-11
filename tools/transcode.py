@@ -33,14 +33,14 @@ AV1 的 28 远小于其默认 40，会导致 AV1 产物比 H.264 还大）：
   容器与所选音频不兼容时自动落到该容器默认并提示（如 WebM 里 aac → opus）。
 
 用法示例：
-  python transcode.py clip.mov                               # 默认 hevc + av1，medium 档
-  python transcode.py clip.mov --quality low --formats av1   # 追求最小体积
-  python transcode.py clip.mov --formats h264,hevc,av1,vp9   # 全 4 格式
-  python transcode.py clip.mov --formats h264 --audio mp3    # 单格式 + 音频 mp3
-  python transcode.py clip.mov --crf 26 --gpu-cq 24          # 显式覆盖质量档位
-  python transcode.py clip.mov --max-height 720              # 输出封顶 720p
-  python transcode.py uploads/ --delete-source               # 批处理目录并删源
-  python transcode.py uploads/ --out D:/web_export --no-gpu  # 指定输出目录 + 全 CPU
+  python tools/transcode.py clip.mov                               # 默认 hevc + av1，medium 档
+  python tools/transcode.py clip.mov --quality low --formats av1   # 追求最小体积
+  python tools/transcode.py clip.mov --formats h264,hevc,av1,vp9   # 全 4 格式
+  python tools/transcode.py clip.mov --formats h264 --audio mp3    # 单格式 + 音频 mp3
+  python tools/transcode.py clip.mov --crf 26 --gpu-cq 24          # 显式覆盖质量档位
+  python tools/transcode.py clip.mov --max-height 720              # 输出封顶 720p
+  python tools/transcode.py uploads/ --delete-source               # 批处理目录并删源
+  python tools/transcode.py uploads/ --out D:/web_export --no-gpu  # 指定输出目录 + 全 CPU
 
 依赖：系统 ffmpeg（常规构建含 libx264/libx265/libvpx；GPU/AV1 视构建与驱动支持）。
 纯标准库实现，无 pip 依赖；--ffmpeg 可指定 ffmpeg 路径。

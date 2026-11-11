@@ -38,6 +38,9 @@ def create_share(
     days: int = Form(...),
     password: str = Form("")
 ):
+    # 单文件共享不支持相册模式（相册依赖目录树/多文件，file 型无此结构）→ 强制 normal
+    if share_type == "file":
+        share_mode = "normal"
     share_id = str(uuid.uuid4())[:8]
     expire_time = datetime.now() + timedelta(days=days)
 
@@ -137,6 +140,212 @@ _EC_MAP = {
 }
 
 
+
+def _hex_to_rgb(color_str, default=(0, 0, 0)):
+    try:
+        v = int(color_str.lstrip("#"), 16)
+        if 0 <= v <= 0xFFFFFF:
+            return ((v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF)
+    except (ValueError, TypeError):
+        pass
+    return default
+
+
+def _load_font(size):
+    from PIL import ImageFont
+    for path in (
+        "C:/Windows/Fonts/msyh.ttc",
+        "C:/Windows/Fonts/simhei.ttf",
+        "C:/Windows/Fonts/simsun.ttc",
+        "/System/Library/Fonts/PingFang.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/wqy/wqy-microhei.ttc",
+    ):
+        try:
+            return ImageFont.truetype(path, size)
+        except Exception:
+            continue
+    try:
+        return ImageFont.load_default(size)
+    except Exception:
+        return ImageFont.load_default()
+
+def _load_font_bold(size):
+    """加载粗体 CJK 字体（用于标题）；找不到退回常规字体。"""
+    from PIL import ImageFont
+    for path in (
+        "C:/Windows/Fonts/msyhbd.ttc",
+        "C:/Windows/Fonts/msyhbd.ttf",
+        "C:/Windows/Fonts/simhei.ttf",
+        "/System/Library/Fonts/PingFang.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Bold.ttc",
+    ):
+        try:
+            return ImageFont.truetype(path, size)
+        except Exception:
+            continue
+    return _load_font(size)
+
+
+
+def _ellipsize(text, font, max_px, draw, keep_head=True):
+    """超宽截断：keep_head=True 保留开头砍尾部（标题/路径）；
+    False 保留头尾砍中间（URL）。"""
+    if draw.textlength(text, font=font) <= max_px:
+        return text
+    if keep_head:
+        s = text
+        while s and draw.textlength(s + "…", font=font) > max_px:
+            s = s[:-1]
+        return s + "…"
+    # 头尾保留式
+    head = max(6, len(text) // 3)
+    tail = max(4, (len(text) - head) // 3)
+    while head + tail > 12:
+        probe = text[:head] + "…" + text[len(text) - tail:]
+        if draw.textlength(probe, font=font) <= max_px:
+            return probe
+        head = max(4, head - 2)
+        tail = max(2, tail - 2)
+    return text[:3] + "…"
+
+
+def _render_qr_with_info(content, style, title="", url=""):
+    """美化的二维码 PNG：圆角卡片 + 留白 + 标题 / URL / "扫码访问" 提示。
+
+    布局（卡片内）：
+      顶部留白 → QR（含 quiet zone）→ 间距 → "扫码访问" 小字
+      → 标题（加粗大字）→ URL（灰字 + 下划线）→ 底部留白
+    卡片四角圆角、轻阴影；配色随 qr_style.fg/bg 自动反色。
+    """
+    from PIL import Image, ImageDraw, ImageFilter
+
+    # ── QR 主体 ──
+    ec = _EC_MAP.get(style.get("error_correction", "M"),
+                     qrcode.constants.ERROR_CORRECT_M)
+    qr = qrcode.QRCode(error_correction=ec,
+                       box_size=int(style.get("box_size", 8)),
+                       border=int(style.get("border", 4)))
+    qr.add_data(content)
+    qr.make(fit=True)
+    qr_img = qr.make_image()
+
+    fg = _hex_to_rgb((style.get("fg_color") or "000000").lstrip("#"))
+    bg = _hex_to_rgb((style.get("bg_color") or "FFFFFF").lstrip("#"))
+    bg_lum = (bg[0] + bg[1] + bg[2]) / 3
+
+    if (fg, bg) != ((0, 0, 0), (255, 255, 255)):
+        gray = qr_img.convert("L")
+        dark = Image.new("RGB", gray.size, fg)
+        light = Image.new("RGB", gray.size, bg)
+        qr_img = Image.composite(dark, light, gray)
+    qr_img = qr_img.convert("RGBA")
+    qw, qh = qr_img.size
+
+    # ── 无标题且无 URL → 直接返回纯 QR（保持 /api/qr-preview 轻量）──
+    if not title and not url:
+        buf = io.BytesIO()
+        qr_img.save(buf, format="PNG")
+        return buf.getvalue()
+
+    # ── 字体 ──
+    t_size = max(13, qw // 10)
+    u_size = max(10, qw // 26)
+    h_size = max(9, qw // 32)
+    tf = _load_font_bold(t_size)
+    uf = _load_font(u_size)
+    hf = _load_font(h_size)
+
+    probe = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+    max_w = float(qw - 8)
+    d_title = _ellipsize(title, tf, max_w, probe, keep_head=True) if title else ""
+    d_url = _ellipsize(url, uf, max_w, probe, keep_head=False) if url else ""
+    d_hint = "扫码访问"
+
+    tw = int(probe.textlength(d_title, font=tf)) if d_title else 0
+    uw = int(probe.textlength(d_url, font=uf)) if d_url else 0
+    hw = int(probe.textlength(d_hint, font=hf))
+
+    # ── 卡片尺寸 ──
+    pad_h = max(18, qw // 9)       # 左右内边距
+    pad_top = max(16, qw // 11)    # 顶部内边距
+    pad_bot = max(16, qw // 11)    # 底部内边距
+    gap = max(10, qh // 14)        # QR 与文字间距
+
+    hint_h = h_size + 6
+    title_h = t_size + 6 if d_title else 0
+    url_h = u_size + 10 if d_url else 0  # 含下划线
+
+    card_w = qw + pad_h * 2
+    card_h = pad_top + qh + gap + hint_h + title_h + url_h + pad_bot
+
+    # ── 画布（含阴影扩展区，四角透明）──
+    sh = 6   # 阴影向外扩展
+    blur = 10
+    canvas_w = card_w + sh * 2 + blur * 2
+    canvas_h = card_h + sh * 2 + blur * 2
+    canvas = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+    cx = (canvas_w - card_w) // 2
+    cy = (canvas_h - card_h) // 2
+
+    # ── 阴影（圆角矩形 + 高斯模糊）──
+    card_fill = (255, 255, 255, 255) if bg_lum > 128 else bg + (255,)
+    shadow_layer = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+    sd = ImageDraw.Draw(shadow_layer)
+    sd.rounded_rectangle(
+        [cx - sh + 2, cy - sh + 4, cx + card_w + sh, cy + card_h + sh + 2],
+        radius=22, fill=(0, 0, 0, 28))
+    shadow_layer = shadow_layer.filter(ImageFilter.GaussianBlur(blur))
+    canvas = Image.alpha_composite(canvas, shadow_layer)
+
+    # ── 卡片（圆角 + 1px 描边）──
+    card_layer = Image.new("RGBA", (canvas_w, canvas_h), (0, 0, 0, 0))
+    cd = ImageDraw.Draw(card_layer)
+    cd.rounded_rectangle(
+        [cx, cy, cx + card_w, cy + card_h],
+        radius=20, fill=card_fill,
+        outline=(0, 0, 0, 22), width=1)
+    canvas = Image.alpha_composite(canvas, card_layer)
+
+    # ── 画 QR（卡片内居中）──
+    qr_x = cx + (card_w - qw) // 2
+    qr_y = cy + pad_top
+    canvas.paste(qr_img, (qr_x, qr_y), qr_img)
+
+    # ── 文字 ──
+    draw = ImageDraw.Draw(canvas)
+    mid_x = cx + card_w // 2
+    y = qr_y + qh + gap
+
+    # 提示小字（fg 色 45% 透明）
+    hint_a = 115 if bg_lum > 128 else 130
+    hint_clr = fg[:3] + (hint_a,) if bg_lum > 128 else (255, 255, 255, hint_a)
+    draw.text((mid_x, y + h_size // 2), d_hint,
+              font=hf, fill=hint_clr, anchor="mm")
+    y += hint_h
+
+    # 标题（加粗，fg 色 / 深底反白）
+    title_clr = fg + (255,) if bg_lum > 128 else (245, 245, 250, 255)
+    if d_title:
+        draw.text((mid_x, y + t_size // 2), d_title,
+                  font=tf, fill=title_clr, anchor="mm")
+        y += title_h
+
+    # URL（灰 + 1px 下划线）
+    url_clr = (90, 100, 120, 200) if bg_lum > 128 else (165, 175, 195, 200)
+    url_line_clr = (90, 100, 120, 70) if bg_lum > 128 else (165, 175, 195, 70)
+    if d_url:
+        draw.text((mid_x, y + u_size // 2), d_url,
+                  font=uf, fill=url_clr, anchor="mm")
+        draw.line(
+            [(mid_x - uw // 2, y + u_size + 3),
+             (mid_x + uw // 2, y + u_size + 3)],
+            fill=url_line_clr, width=1)
+
+    buf = io.BytesIO()
+    canvas.save(buf, format="PNG")
+    return buf.getvalue()
+
 def _render_qr_png(content: str, style: dict) -> bytes:
     """把 content 渲染成带自定义前景/背景色的二维码 PNG 字节流。
 
@@ -181,18 +390,19 @@ def _render_qr_png(content: str, style: dict) -> bytes:
 
 
 @router.get("/api/qr-preview")
-def qr_preview(fg: str = "000000", bg: str = "FFFFFF", ec: str = "M", box: int = 8):
+def qr_preview(fg: str = "000000", bg: str = "FFFFFF", ec: str = "M", box: str = "8"):
     """配色实时预览：渲染一张编码 git 库地址的示例二维码 PNG。
 
     供设置页"二维码样式"区在切换配色下拉时即时刷新预览（无需先保存设置）；
     颜色/纠错/尺寸由 query 传入，content 固定为 QR_PREVIEW_SAMPLE。
+    box 用 str 接收并在函数体内解析：前端空值（box=）回退默认 8，避免 422 破图。
     """
     style = dict(_QR_STYLE_DEFAULT)
     style["fg_color"] = (fg or "000000").lstrip("#")
     style["bg_color"] = (bg or "FFFFFF").lstrip("#")
     style["error_correction"] = ec if ec in _EC_MAP else "M"
     try:
-        style["box_size"] = int(box)
+        style["box_size"] = int(str(box).strip() or 8)
     except (ValueError, TypeError):
         pass
     return Response(
@@ -213,8 +423,10 @@ def link_qr(link_id: str, request: Request):
         raise HTTPException(status_code=404, detail="链接不存在")
 
     full_url = _link_public_url(link_id, record, request)
+    title = record.get("path") or record.get("folder") or ""
     return Response(
-        content=_render_qr_png(full_url, _qr_style()),
+        content=_render_qr_with_info(full_url, _qr_style(),
+                                     title=title, url=full_url),
         media_type="image/png",
         headers={"Cache-Control": "no-store"},
     )

@@ -38,7 +38,7 @@
      */
     function previewFile(path, imageFiles) {
         const ext = X.getExt(path);
-        const url = "/api/download/" + encodeURIComponent(path);
+        const url = X.resolveUrl("/api/download/" + encodeURIComponent(path));
         const preview = document.getElementById("previewContent");
 
         if (!preview) {
@@ -136,8 +136,8 @@
         // 原图下载走 /api/download（管理 API，需 token）。
         // <a href> 无法携带 Authorization 请求头，故用 X.authedUrl 把 token
         // 追加进查询参数，避免"认证过期/未授权"提示（修复第 8 项）。
-        const previewUrl = "/api/preview-image/" + encodeURIComponent(image.path);
-        const rawDownload = "/api/download/" + encodeURIComponent(image.path);
+        const previewUrl = X.resolveUrl("/api/preview-image/" + encodeURIComponent(image.path));
+        const rawDownload = X.resolveUrl("/api/download/" + encodeURIComponent(image.path));
         const downloadUrl = X.authedUrl(rawDownload);
 
         document.getElementById("previewContent").innerHTML = `

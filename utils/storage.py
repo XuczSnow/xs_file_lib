@@ -13,6 +13,7 @@ from utils import security
 UPLOAD_DIR = "./uploads"          # ④ 用户文件
 THUMB_DIR = "./cache/thumbs"     # ③ 可再生产缓存（缩略图）
 CACHE_ZIP_DIR = "./cache/zips"   # ③ 可再生产缓存（zip 打包）
+DASH_DIR = "./cache/dash"        # ③ 可再生产缓存（fMP4+DASH 视频分片）
 
 # ① config/：仅保留"人手工可改"的轻量设置
 FOLDER_PERMS_CONF = "./config/folder_permissions.json"
@@ -363,6 +364,20 @@ def _default_settings() -> dict:
         # 图片缩略图尺寸（短边像素，列表/预览两档）
         "thumb_size_list": 600,
         "thumb_size_preview": 1200,
+        # IPv6 媒体改道：分享页资源/下载链接优先走该基址，不可达自动降级相对路径；
+        # 留空 = 不启用（保持现状）。ipv6_timeout_ms 为可达性探测超时（缺省 1500）
+        "ipv6_base_url": "",
+        "ipv6_timeout_ms": 1500,
+        # 视频 fMP4/DASH 分片：ffmpeg 可执行路径（留空取 PATH；无 ffmpeg 则 DASH
+        # 功能自动禁用，播放页回退到普通渐进式视频流，零风险）
+        "ffmpeg_path": "",
+        # 视频 fMP4/DASH 分片：是否允许服务端自动切片（相册/播放页惰性生成分片）。
+        # 默认 False = 不自动分片：manifest 端点恒 404，播放页走渐进式；
+        # 开启后首次访问共享视频时自动切 fMP4 分片（需 ffmpeg），秒起播/拖动只拉小片
+        "dash_auto_slice": False,
+        # 共享密码访问令牌有效期（小时）：/api/share-check 校验密码后签发，
+        # 内容/下载/播放请求携带。签发时动态读取（保存设置即热生效，无需重启）
+        "share_access_ttl_hours": 1,
         # 二维码样式
         "qr_style": {
             "fg_color": "000000",
@@ -409,6 +424,7 @@ def init_config():
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     os.makedirs(THUMB_DIR, exist_ok=True)
     os.makedirs(CACHE_ZIP_DIR, exist_ok=True)
+    os.makedirs(DASH_DIR, exist_ok=True)
     # 确保 config / data 目录存在（均被 .gitignore 忽略，属部署数据）
     os.makedirs(os.path.dirname(SETTING_CONF) or ".", exist_ok=True)
     os.makedirs(os.path.dirname(USER_CONF) or ".", exist_ok=True)
@@ -458,3 +474,6 @@ def init_config():
     from utils import ziptask
     ziptask.sync_index()
     ziptask.enforce_capacity()
+    # DASH：建分片缓存目录 + 一次性容量裁剪（无 ffmpeg 时自动禁用，播放页回退渐进式）
+    from utils import dashtask
+    dashtask.init()

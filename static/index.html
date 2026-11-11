@@ -227,6 +227,18 @@
                             <input id="cacheMaxGb" type="number" min="0" max="1024" class="form-control">
                             <div class="form-text">cache/zips 目录总量超过此值时按最旧优先自动裁剪；填 0 表示不限制。默认 10。</div>
                         </div>
+                        <div class="col-md-6">
+                            <label class="setting-label">资源访问地址（可选）</label>
+                            <input id="ipv6BaseUrl" class="form-control mono-input"
+                                   placeholder="http://192.168.1.10:8000 或 http://[2408:4003::1]:8000">
+                            <div class="form-text">填写后，分享/预览页的媒体资源与下载链接优先走该地址（IPv4 / IPv6 均可，
+                                IPv6 需带方括号）；页面加载时自动探测，连不上即降级回当前地址。留空 = 不启用。</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="setting-label">资源探测超时（毫秒）</label>
+                            <input id="ipv6TimeoutMs" type="number" min="0" class="form-control">
+                            <div class="form-text">可达性探测的等待上限，超时判为不可达并降级。默认 1500。</div>
+                        </div>
                     </div>
                 </div>
 
@@ -304,6 +316,26 @@
                     </div>
                 </div>
 
+                <!-- 相册设置：DASH 自动切片开关（默认关闭，按需开启秒起播分段播放） -->
+                <div class="card p-3 setting-card">
+                    <div class="setting-card-title"><i class="bi bi-images"></i> 相册设置</div>
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <div class="form-check form-switch">
+                                <input type="checkbox" class="form-check-input" id="dashAutoSlice">
+                                <label class="form-check-label" for="dashAutoSlice">
+                                    自动切片共享视频（DASH 分段播放）
+                                </label>
+                            </div>
+                            <div class="form-text">
+                                开启后首次访问共享视频时，服务端自动切成 fMP4 分片（需 ffmpeg）：秒起播、拖动进度条只拉小片；
+                                关闭（默认）则一律渐进式播放，不产生分片缓存。
+                                也可用 tools/make_dash.py 离线预切，开启开关后自动复用预切产物。
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- 二维码样式：左侧配色/纠错/模块尺寸表单，右侧真实二维码预览（编码 git 库地址） -->
                 <div class="card p-3 setting-card">
                     <div class="setting-card-title"><i class="bi bi-qr-code-scan"></i> 二维码样式</div>
@@ -326,7 +358,7 @@
                                 </div>
                                 <div class="col-sm-6">
                                     <label class="setting-label">模块尺寸（px，越大图案越大越清晰）</label>
-                                    <input id="qrBox" type="number" min="1" max="32" class="form-control">
+                                    <input id="qrBox" type="number" min="1" max="32" value="8" class="form-control">
                                 </div>
                             </div>
                         </div>
@@ -479,7 +511,7 @@
             <div class="modal-content text-center p-4">
                 <h5 class="modal-title mb-3">链接二维码</h5>
                 <img id="qrImage" alt="链接二维码"
-                     style="width:220px;height:220px;margin:auto;display:block">
+                     style="width:260px;height:auto;max-height:460px;margin:auto;display:block;object-fit:contain">
                 <div id="qrUrlText"
                      class="qr-copy-hint text-muted small mt-3 mb-1"
                      style="cursor:pointer;word-break:break-all">

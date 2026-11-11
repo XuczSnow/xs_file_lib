@@ -17,6 +17,8 @@
  *   - getJSON      GET 封装
  *   - pollZipTask  zip 打包任务轮询（Promise 化，带超时与失败）
  *   - loadSiteSetting 拉取站点设置并更新 <title>
+ *   - loadMediaBase  IPv6 媒体改道：读设置 + 可达性探测 + 自动降级
+ *   - resolveUrl     给站内资源/下载路径拼 IPv6 基址前缀（不可用则相对）
  *   - copyText     剪贴板复制（含非 https 降级）
  */
 (function (global) {
@@ -197,6 +199,68 @@
         }
     }
 
+    /* ---------- 媒体资源 IPv6 改道（可配 + 可达性探测 + 自动降级）----------
+     * 站点设置 ipv6_base_url 填了 IPv6 基址后，分享/预览页的资源加载与下载
+     * 链接优先走该基址；页面生成 URL 前调 loadMediaBase() 探测一次可达性，
+     * 不可达（超时/网络错误）自动把 mediaBase 置空 → 降级回相对路径（= 当前
+     * origin），功能不受影响。超时毫秒数可由设置项 ipv6_timeout_ms 配置。
+     */
+    let mediaBase = "";
+    let _mediaBaseReady = null;   // Promise 缓存（本会话只探测一次）
+
+    /**
+     * 读取站点设置里的 ipv6_base_url + ipv6_timeout_ms，探测 IPv6 可达性，
+     * 把 mediaBase 设为"可达的 IPv6 基址"（不可达 / 未配置则为 ""=相对路径）。
+     * 各分享页必须在生成任何资源/下载 URL 之前调用一次（幂等，返回同一 Promise）。
+     * @returns {Promise<string>} 生效的 mediaBase
+     */
+    function loadMediaBase() {
+        if (_mediaBaseReady) return _mediaBaseReady;
+        _mediaBaseReady = (async () => {
+            try {
+                const settings = await getJSON("/api/settings");
+                const base = (settings.ipv6_base_url || "").trim();
+                if (!base) { mediaBase = ""; return ""; }   // 未配置 → 相对路径
+                // 超时毫秒：设置项 ipv6_timeout_ms（数字/数字串，>=0）；缺省 1500
+                let timeout = 1500;
+                const raw = settings.ipv6_timeout_ms;
+                if (typeof raw === "number" && raw >= 0) timeout = raw;
+                else if (typeof raw === "string" && raw !== "") {
+                    const v = parseInt(raw, 10);
+                    if (!isNaN(v) && v >= 0) timeout = v;
+                }
+                const probeUrl = base.replace(/\/+$/, "") + "/api/settings";
+                const ctrl = new AbortController();
+                const timer = setTimeout(() => ctrl.abort(), timeout || 1500);
+                // no-cors：只需知道"连不连得上"，不关心响应体；成功 resolve 即判可达
+                await fetch(probeUrl, {
+                    method: "GET", mode: "no-cors",
+                    cache: "no-store", signal: ctrl.signal,
+                });
+                clearTimeout(timer);
+                mediaBase = base.replace(/\/+$/, "");
+                return mediaBase;
+            } catch (e) {
+                mediaBase = "";   // 不可达 / 读取失败 → 降级相对路径
+                return "";
+            }
+        })();
+        return _mediaBaseReady;
+    }
+
+    /**
+     * 把站内资源/下载相对路径拼上 mediaBase（IPv6 基址，未启用则为空）。
+     * 仅对以 "/" 开头的站内地址生效；协议绝对地址（http:/https:/相对）原样返回。
+     * 使用前须先 await loadMediaBase()。
+     * @param {string} path 站内相对路径，如 "/api/thumbnail/xxx"
+     * @returns {string} mediaBase + path
+     */
+    function resolveUrl(path) {
+        if (!path || path[0] !== "/") return path;
+        if (/^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(path)) return path;  // 已带协议
+        return mediaBase + path;
+    }
+
     /* 汇总导出，挂载为全局 XSLib */
     global.XSLib = {
         escapeHtml,
@@ -214,5 +278,7 @@
         pollZipTask,
         loadSiteSetting,
         copyText,
+        loadMediaBase,
+        resolveUrl,
     };
 })(window);

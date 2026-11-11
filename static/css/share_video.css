@@ -139,9 +139,29 @@ body {
 }
 
 .video-content {
+    position: relative;
     background: transparent;
     border-radius: 12px;
     overflow: hidden;
+}
+
+/* 左上角当前播放格式徽章（DASH / 自动·MP4 / DASH回退 …）：半透明黑底 + 白字，
+   视频画面上叠加，不影响控件区；全屏（.video-max）时同样可见 */
+.fmt-badge {
+    position: absolute;
+    top: 10px;
+    left: 12px;
+    z-index: 5;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: rgba(15, 23, 42, .62);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .02em;
+    line-height: 18px;
+    pointer-events: none;
+    backdrop-filter: blur(2px);
 }
 
 /* 普通模式：宽度自适应，高受限 80vh（无顶栏，视频空间尽量大）；画布透明无黑边 */

@@ -9,8 +9,9 @@
     <link href="/static/vendor/bootstrap.min.css" rel="stylesheet">
     <link href="/static/vendor/bootstrap-icons.min.css" rel="stylesheet">
 
-    <!-- 视频播放页：样式抽离到 /static/css/share_video.css；与相册页统一浅色风格 -->
-    <link href="/static/css/share_video.css" rel="stylesheet">
+    <!-- 视频播放页：样式抽离到 /static/css/share_video.css；与相册页统一浅色风格。
+         ?v=fmt3 与 share_video.js 同步破缓存（旧 CSS 缺 .fmt-badge 规则时徽章裸文本上屏） -->
+    <link href="/static/css/share_video.css?v=fmt3" rel="stylesheet">
 
 </head>
 
@@ -22,6 +23,8 @@
         <div class="player-main">
             <div class="video-content" id="videoContent">
                 <video id="videoPlayer" controls preload="metadata"></video>
+                <!-- 左上角当前播放格式徽章（share_video.js 动态填充：DASH / 自动 · MP4 / DASH回退 …） -->
+                <span id="fmtBadge" class="fmt-badge" hidden></span>
             </div>
             <div class="player-controls">
                 <div class="vid-switch">
@@ -55,9 +58,17 @@
 
     </div>
 
-    <!-- common.js（XSLib）+ 本页逻辑 -->
-    <script src="/static/js/common.js"></script>
-    <script src="/static/js/share_video.js"></script>
+    <!-- common.js（XSLib）+ 本页逻辑；?v=fmt3 与 share_video.js 同步破缓存
+         （旧 common.js 缺 loadMediaBase/resolveUrl 时新 JS 直接 TypeError） -->
+    <script src="/static/js/common.js?v=fmt3"></script>
+    <!-- fMP4/DASH 加速（路线 B）：内置真实 DASH-IF dash.js v5.3.0；dashjsReady() 探测通过且
+         该视频已切分片时走分片播放，manifest 404 / 未切片 / 加载失败 → 自动回退原生
+         渐进式。?v=dash53 是 cache-busting 参数，每次升级 dash.js 后更新即可强制重取。 -->
+    <script src="/static/vendor/dash.js?v=dash53"></script>
+    <!-- ?v=fmt3 破浏览器缓存：确保拿到 2026-11-10 改动后的 share_video.js
+         （左上角格式徽章 + 下拉精简只列可用格式 + "自动"优先 DASH；
+          历史 ?fmt=dash 深链已归一化为 auto）。每次改动 share_video.js 后递增该参数。 -->
+    <script src="/static/js/share_video.js?v=fmt3"></script>
 
 </body>
 

@@ -504,7 +504,14 @@
             daysSel.appendChild(opt);
         }
         daysSel.value = wantDays;
-        document.getElementById("shareMode").value = shareDefaults.mode || "normal";
+        const modeSel = document.getElementById("shareMode");
+        // 单文件共享不支持相册模式（依赖目录树结构）→ 禁用相册选项并锁定普通模式
+        const albumOpt = Array.from(modeSel.options).find((o) => o.value === "album");
+        if (albumOpt) {
+            albumOpt.disabled = (type === "file");
+            albumOpt.textContent = (type === "file") ? "相册模式（仅文件夹）" : "相册模式";
+        }
+        modeSel.value = (type === "file") ? "normal" : (shareDefaults.mode || "normal");
         new bootstrap.Modal(document.getElementById("shareModal")).show();
     };
 
@@ -773,10 +780,14 @@
         if (!img) return;
         const ec = document.getElementById("qrEc");
         const box = document.getElementById("qrBox");
+        // qrBox 无默认值：进设置页时 loadSettings 会先用空 box 触发本函数，
+        // 空值会让后端 box 解析 422，故空/非法一律回退默认（ec→M，box→8）
+        const ecVal = (ec && String(ec.value).trim() !== "") ? ec.value : "M";
+        const boxVal = (box && String(box.value).trim() !== "") ? String(box.value) : "8";
         const qs = new URLSearchParams({
             fg: p.fg, bg: p.bg,
-            ec: ec ? ec.value : "M",
-            box: box ? box.value : 8,
+            ec: ecVal,
+            box: boxVal,
         });
         img.src = "/api/qr-preview?" + qs.toString();
     }
@@ -822,6 +833,14 @@
             settings.thumb_size_list === undefined ? 600 : settings.thumb_size_list;
         document.getElementById("thumbSizePreview").value =
             settings.thumb_size_preview === undefined ? 1200 : settings.thumb_size_preview;
+        // IPv6 媒体改道
+        document.getElementById("ipv6BaseUrl").value = settings.ipv6_base_url || "";
+        document.getElementById("ipv6TimeoutMs").value =
+            settings.ipv6_timeout_ms === undefined ? 1500 : settings.ipv6_timeout_ms;
+
+        // 相册设置（DASH 自动切片，默认关闭）
+        document.getElementById("dashAutoSlice").checked =
+            !!settings.dash_auto_slice;
 
         // 二维码样式
         const qs = settings.qr_style || {};
@@ -860,6 +879,11 @@
             hot_flush_sec: parseInt(document.getElementById("hotFlushSec").value, 10) || 30,
             thumb_size_list: parseInt(document.getElementById("thumbSizeList").value, 10) || 600,
             thumb_size_preview: parseInt(document.getElementById("thumbSizePreview").value, 10) || 1200,
+            // IPv6 媒体改道（留空 = 不启用）
+            ipv6_base_url: document.getElementById("ipv6BaseUrl").value.trim(),
+            ipv6_timeout_ms: parseInt(document.getElementById("ipv6TimeoutMs").value, 10) || 1500,
+            // 相册设置（DASH 自动切片开关，默认关闭）
+            dash_auto_slice: document.getElementById("dashAutoSlice").checked,
             // 二维码样式
             qr_style: {
                 fg_color: preset.fg,

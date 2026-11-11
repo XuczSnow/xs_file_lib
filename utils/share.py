@@ -34,7 +34,7 @@ def share_unlocked(share: dict, share_id: str, password: str = "", access: str =
 # 视频 Content-Type 按扩展名推断（弱服务器 + 浏览器解码正确性）；未知类型给通用值
 _VIDEO_CONTENT_TYPES = {
     "mp4": "video/mp4", "m4v": "video/mp4",
-    "webm": "video/webm", "ogv": "video/ogg",
+    "webm": "video/webm", "ogv": "video/ogg", "ogg": "video/ogg",
     "mov": "video/quicktime", "mkv": "video/x-matroska",
     "avi": "video/x-msvideo", "ts": "video/mp2t",
 }

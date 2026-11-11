@@ -148,6 +148,12 @@ body {
     background: #f8fafc;
 }
 
+/* ---------- 单文件共享（file 型）卡片：文件名（前置类型图标） + 大小/类型标签 + 下载 ---------- */
+
+.single-file-row {
+    gap: 12px;
+}
+
 /* 子文件夹标题行：指示器 + 名称 + 计数，可折叠 */
 .share-folder-title {
     display: flex;

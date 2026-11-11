@@ -248,10 +248,27 @@ def needs_upgrade(stored: str) -> bool:
 
 # ==================== 共享密码访问令牌（短期）====================
 
-# 密码保护共享的访问令牌有效期（秒），默认 1 小时。
+# 密码保护共享的访问令牌有效期：设置项 share_access_ttl_hours 优先（保存即热生效，
+# 与登录限流参数同级），缺省 1 小时；环境变量 XS_SHARE_ACCESS_TTL 作部署兜底。
 # /api/share-check 校验密码成功后签发；后续 content/download/video
 # 请求携带该令牌，避免把明文密码写进 URL/访问日志。
-_SHARE_ACCESS_TTL = int(os.environ.get("XS_SHARE_ACCESS_TTL", str(3600)))
+_SHARE_ACCESS_TTL_DEFAULT = int(os.environ.get("XS_SHARE_ACCESS_TTL", str(3600)))
+
+
+def _share_access_ttl() -> int:
+    """共享访问令牌有效期（秒）：每次签发动态读取，保存设置无需重启。
+
+    已签发令牌按签发时的有效期自然过期（只影响新签发的令牌）。
+    惰性 import storage（本模块不依赖 storage，避免循环导入）。"""
+    try:
+        from utils import storage
+        hours = float(((storage.load_config() or {})
+                       .get("share_access_ttl_hours", 0)) or 0)
+    except Exception:
+        return _SHARE_ACCESS_TTL_DEFAULT
+    if hours > 0:
+        return int(hours * 3600)
+    return _SHARE_ACCESS_TTL_DEFAULT
 
 
 def issue_share_access(share_id: str) -> str:
@@ -259,7 +276,7 @@ def issue_share_access(share_id: str) -> str:
     import base64
     payload = {
         "share": share_id,
-        "exp": int(time.time()) + _SHARE_ACCESS_TTL,
+        "exp": int(time.time()) + _share_access_ttl(),
     }
     raw = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
     b64 = base64.urlsafe_b64encode(raw.encode("utf-8")).decode("ascii")
