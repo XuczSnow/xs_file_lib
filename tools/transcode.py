@@ -1,13 +1,20 @@
 #!/usr/bin/env python3
-"""同片源转码工具：从源视频生成多个网页可播版本（输出到源文件所在目录，同 stem）。
+"""同片源转码工具：从源视频生成多个网页可播版本。
 
-输出约定（--formats 选择视频编码格式；多选时文件名带格式后缀，单选保持原名）：
+输出位置（--out 可覆盖）：
+  默认 → 项目根 cache/video/，按【uploads 相对结构】存放（与 DASH 缓存同 key 口径）：
+    uploads/1111/1234/clip.mp4 → cache/video/1111/1234/clip_hevc.mp4 …
+  源不在 uploads 内：目录模式保留相对源目录结构；单文件模式平铺 cache/video/。
+  转码产物【不写入 uploads】（共享目录树只见原始视频，播放页按目录到 cache/video 查格式）。
+
+输出命名（--formats 选择视频编码格式；多选时文件名带格式后缀，单选保持原名）：
   h264 → xxx_h264.mp4  H.264 + AAC + faststart   兼容性最好（Safari/Chrome/老设备）
   hevc → xxx_hevc.mp4  HEVC + AAC + hvc1 tag     体积最小（Safari 可硬解）
   av1  → xxx_av1.webm  AV1 + Opus（WebM）         新一代高压缩比（Chrome/新设备）
   vp9  → xxx_vp9.webm  VP9 + Opus（WebM）         旧浏览器兜底
-  相册页按"片源"去重只显示一张卡；视频播放页同片源并成一条选集，
-  胶囊菜单可选"自动 / H.264 / HEVC / AV1 / VP9"分片（自动 = 浏览器 <source> 自选）。
+  相册页/视频播放页：共享目录树只显示原始视频；播放页切选集时按该视频的
+  cache/video 目录位置查询"可用转码格式"（/api/video-transcodes），下拉可选
+  H.264 / HEVC / AV1 / VP9（自动 = 浏览器 <source> 自选原视频）。
 
 编码器策略（GPU 优先，每个目标各持一条回退链；--no-gpu 强制全 CPU）：
   h264: h264_nvenc > h264_qsv > h264_amf → libx264
@@ -41,6 +48,8 @@ AV1 的 28 远小于其默认 40，会导致 AV1 产物比 H.264 还大）：
   python tools/transcode.py clip.mov --max-height 720              # 输出封顶 720p
   python tools/transcode.py uploads/ --delete-source               # 批处理目录并删源
   python tools/transcode.py uploads/ --out D:/web_export --no-gpu  # 指定输出目录 + 全 CPU
+  （不传 --out 时默认输出到项目根 cache/video/<uploads相对结构>/，如
+    uploads/1111/1234/clip.mp4 → cache/video/1111/1234/clip_hevc.mp4）
 
 依赖：系统 ffmpeg（常规构建含 libx264/libx265/libvpx；GPU/AV1 视构建与驱动支持）。
 纯标准库实现，无 pip 依赖；--ffmpeg 可指定 ffmpeg 路径。
@@ -331,6 +340,32 @@ def transcode_one(src, out_dir, args, chains: dict) -> dict:
     return {"skipped": 0, "done": done, "failed": failed, "used": used}
 
 
+# 默认输出根：项目根 cache/video（与 storage.TC_VIDEO_DIR 同口径，按 uploads 相对结构存放）
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+TC_VIDEO_DIR = PROJECT_ROOT / "cache" / "video"
+UPLOADS_DIR = PROJECT_ROOT / "uploads"
+
+
+def default_out_dir(src: Path, root: Path, is_dir_mode: bool) -> Path:
+    """默认输出目录：cache/video（项目根），按 uploads 相对结构存放。
+
+    - src 位于 uploads/ 内 → cache/video/<相对 uploads>/（与 DASH 缓存 key 同口径）
+    - 目录模式、源不在 uploads → cache/video/<相对源目录结构>/
+    - 单文件模式、源不在 uploads → 平铺 cache/video/
+    注意：src/root 可能是相对路径（从项目根用相对路径跑脚本时），先 resolve
+    成绝对路径再算 relative_to，否则相对/绝对混用必抛 ValueError → 全部落平铺。
+    """
+    src = src.resolve()
+    try:
+        return TC_VIDEO_DIR / src.parent.relative_to(UPLOADS_DIR)
+    except ValueError:
+        pass
+    if is_dir_mode:
+        root = root.resolve()
+        return TC_VIDEO_DIR / src.parent.relative_to(root)
+    return TC_VIDEO_DIR
+
+
 def iter_sources(path: Path):
     """收集待转码源：文件或目录（递归，按扩展名过滤）。"""
     if path.is_file():
@@ -345,7 +380,7 @@ def main():
     ap = argparse.ArgumentParser(
         description="同片源转码（H.264 / HEVC / AV1 / VP9 四种网页可播版本，供相册页去重与播放页分片选择）")
     ap.add_argument("source", help="源视频文件或目录（目录则递归批处理）")
-    ap.add_argument("--out", help="输出根目录（默认输出到源文件所在目录；目录模式保留相对结构）")
+    ap.add_argument("--out", help="输出根目录（默认项目根 cache/video，按 uploads 相对结构存放）")
     ap.add_argument("--formats", default="hevc,av1",
                     help="视频编码格式（逗号分隔多选）：h264,hevc,av1,vp9（默认 hevc,av1；"
                          "多选时文件名带格式后缀，单选保持原名）")
@@ -408,9 +443,13 @@ def main():
 
     total = done_all = skipped_all = failed_all = 0
     for src in iter_sources(root):
-        out_dir = Path(args.out) if args.out else src.parent
-        if args.out and root.is_dir():
-            out_dir = Path(args.out) / src.parent.relative_to(root)
+        if args.out:
+            # 显式 --out：保持原语义（相对源目录结构保留到该根下）
+            out_dir = Path(args.out)
+            if root.is_dir():
+                out_dir = out_dir / src.parent.relative_to(root)
+        else:
+            out_dir = default_out_dir(src, root, root.is_dir())
         out_dir.mkdir(parents=True, exist_ok=True)
 
         r = transcode_one(src, out_dir, args, chains)

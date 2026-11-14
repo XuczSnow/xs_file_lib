@@ -245,6 +245,64 @@ def test_dash_manifest_endpoint_respects_switch(app_server, monkeypatch):
     assert off2.status_code == 404, "开关关闭且无缓存：manifest 应 404（不自动切片）"
 
 
+def test_dash_mpd_hevc_codecs_completed(app_server):
+    """HEVC DASH MPD 的裸 codecs=\"hvc1\" 在 serve 时补全为带 profile/level 的完整串。
+
+    根因：ffmpeg 的 DASH muxer 对 HEVC 只写裸 hvc1/hev1 标签，而浏览器
+    MediaSource.isTypeSupported('video/mp4; codecs="hvc1"') 返回 false（只对带
+    profile/level 的具体串认账）→ dash.js 按 MPD codecs 做能力 gate 时视频轨被丢、
+    只剩音频（"有声无画"）。修法：_rewrite_mpd_basurl 顺带把裸串补全。
+    覆盖：meta 有精确串 / 存量缓存（meta 无串）从分辨率推 level / 非 HEVC 完整串不动。"""
+    import re as _re
+    from routers.share_media import _complete_mpd_video_codecs
+
+    client, base = app_server
+    token = _login(client)
+    up = os.path.join(base, "uploads")
+
+    # --- 单元：_complete_mpd_video_codecs ---
+    hevc_mpd = ('<MPD><Representation mimeType="video/mp4" codecs="hvc1" '
+                'width="2416" height="1440"/></MPD>')
+    assert 'codecs="hvc1.1.6.L93.B0"' in _complete_mpd_video_codecs(hevc_mpd, "hvc1.1.6.L93.B0")
+    assert 'codecs="hvc1.1.6.L93.B0"' in _complete_mpd_video_codecs(hevc_mpd, ""), \
+        "存量缓存（meta 无串）应从 1440p 推 L93"
+    out8k = _complete_mpd_video_codecs(
+        '<MPD><Representation codecs="hvc1" width="7680" height="4320"/></MPD>', "")
+    assert 'codecs="hvc1.1.6.L183.B0"' in out8k, "8K 应推 L183"
+    av1_mpd = '<MPD><Representation mimeType="video/mp4" codecs="av01.0.12M.08"/></MPD>'
+    assert _complete_mpd_video_codecs(av1_mpd, "") == av1_mpd, "非 HEVC 完整串应保持原样"
+
+    # --- 端到端：manifest 端点对存量 HEVC 缓存（meta 无 video_codecs）输出补全后 MPD ---
+    os.makedirs(os.path.join(up, "hevcshare"), exist_ok=True)
+    rel = "hevcshare/clip.mp4"
+    srcp = os.path.abspath(os.path.join(up, rel.replace("/", os.sep)))
+    with open(srcp, "wb") as f:
+        f.write(b"v" * 200)
+    key = dashtask._rel_key(rel)
+    out_dir = os.path.join(dashtask._dash_root(), key)
+    os.makedirs(out_dir, exist_ok=True)
+    st = os.stat(srcp)
+    with open(os.path.join(out_dir, "manifest-stream0.mp4"), "wb") as f:
+        f.write(b"SEG")
+    with open(os.path.join(out_dir, "manifest.mpd"), "w", encoding="utf-8") as f:
+        f.write('<MPD><BaseURL>manifest-stream0.mp4</BaseURL>'
+                '<Representation mimeType="video/mp4" codecs="hvc1" '
+                'width="2416" height="1440"/></MPD>')
+    with open(os.path.join(out_dir, "meta.json"), "w", encoding="utf-8") as f:
+        json.dump({"rel": rel, "fingerprint": {"mtime": st.st_mtime, "size": st.st_size},
+                   "single_file": True, "manifest": "manifest.mpd",
+                   "segments": ["manifest-stream0.mp4"], "source": srcp,
+                   "created_by": "make_dash.py"}, f, ensure_ascii=False, indent=2)
+    sid = client.post("/api/share", data={
+        "filepath": "hevcshare", "share_type": "folder", "days": 1,
+    }, headers=_auth(token)).json()["share_id"]
+    got = client.get("/api/video-dash/%s/%s" % (sid, "clip.mp4"))
+    assert got.status_code == 200, "HEVC 缓存的 manifest 端点应 200"
+    assert not _re.search(r'codecs="hvc1"', got.text), "不应残留裸 hvc1"
+    assert _re.search(r'codecs="hvc1\.\d\.\d\.L\d+\.B0"', got.text), \
+        "manifest 端点应把裸 hvc1 补全为带 profile/level 的完整串"
+
+
 # ---------- 4) CORS 跨源放行（资源访问地址改道场景）----------
 
 def test_dash_media_cors_headers(app_server):
@@ -340,3 +398,145 @@ def test_file_share_video_stream(app_server):
     r = client.get("/api/video-stream/" + sid + "/clip3.mp4")
     assert r.status_code == 200, "单文件视频流应 200（原实现 file 型恒 404）"
     assert r.headers.get("content-type", "").startswith("video/"), "视频流应带 video/* Content-Type"
+
+
+# ---------- 6) 网页转码产物端点（cache/video：列格式 + 取转码文件流）----------
+
+def _tc_root_abs(base):
+    """conftest 重定向后的 cache/video 绝对路径（与运行时 storage.TC_VIDEO_DIR 一致）。"""
+    return storage.TC_VIDEO_DIR
+
+
+def _put_transcode(base, rel_video, suffix, content=b"fake"):
+    """在 cache/video 下按 uploads 相对结构放一个转码产物，返回其绝对路径。
+
+    rel_video 形如 'tcvid/clip.mp4'；产物 = 同目录 + stem + suffix
+    （suffix 含扩展名，如 '_h264.mp4'），与后端 _tc_candidate_paths 口径一致。"""
+    tc = storage.TC_VIDEO_DIR
+    absp = os.path.abspath(os.path.join(tc, rel_video.replace("/", os.sep)))
+    target = os.path.join(
+        os.path.dirname(absp),
+        os.path.splitext(os.path.basename(absp))[0] + suffix)
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    with open(target, "wb") as f:
+        f.write(content)
+    return target
+
+
+def _folder_share(client, base, token, dir_rel, files):
+    """造文件夹共享：在 uploads/dir_rel/ 下写 files（{rel: bytes}），返回 share_id。"""
+    up = os.path.join(base, "uploads")
+    for rel, data in files.items():
+        p = os.path.abspath(os.path.join(up, *dir_rel.split("/"), rel))
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "wb") as f:
+            f.write(data)
+    r = client.post("/api/share", data={
+        "filepath": dir_rel, "share_type": "folder", "days": 1,
+    }, headers=_auth(token))
+    assert r.json().get("success") is True
+    return r.json()["share_id"]
+
+
+def test_video_transcodes_lists_available(app_server):
+    """/api/video-transcodes：无转码产物 → available=[]；放了 _h264 产物 → 返回该格式。
+    filepath 为 UPLOAD 相对全路径（前端 ep.path，如 tcvid/clip.mp4），须落在共享目录下。"""
+    client, base = app_server
+    token = _login(client)
+    sid = _folder_share(client, base, token, "tcvid", {"clip.mp4": b"a" * 300})
+    # 无产物
+    r = client.get("/api/video-transcodes/" + sid + "/tcvid/clip.mp4")
+    assert r.json().get("success") is True
+    assert r.json()["available"] == [], "无转码产物时应返回空 available"
+    # 放一个 h264 产物（cache/video/tcvid/clip_h264.mp4）
+    _put_transcode(base, "tcvid/clip.mp4", "_h264.mp4", b"h264bytes")
+    r2 = client.get("/api/video-transcodes/" + sid + "/tcvid/clip.mp4")
+    av = r2.json()["available"]
+    assert any(x["fmt"] == "h264" for x in av), "存在 clip_h264.mp4 时应列出 h264"
+    h264 = [x for x in av if x["fmt"] == "h264"][0]
+    assert h264["path"].replace("\\", "/").endswith("clip_h264.mp4"), "path 应为相对 cache/video 的产物路径"
+
+
+def test_video_stream_fmt_range_and_download(app_server):
+    """/api/video-stream-fmt：Range 206 + ETag；?dl=1 带 Content-Disposition 附件；
+    未知 fmt 或无产物 → 404。"""
+    client, base = app_server
+    token = _login(client)
+    sid = _folder_share(client, base, token, "tcvid2", {"m.mp4": b"m" * 300})
+    _put_transcode(base, "tcvid2/m.mp4", "_h264.mp4", b"transcoded-bytes-0123")
+    base_url = "/api/video-stream-fmt/" + sid + "/tcvid2/m.mp4/h264"
+    # Range 206
+    r = client.get(base_url, headers={"Range": "bytes=0-4"})
+    assert r.status_code == 206, "Range 请求应 206"
+    assert r.content == b"trans"
+    assert "Content-Range" in r.headers
+    assert "ETag" in r.headers
+    # 整文件 200
+    r0 = client.get(base_url)
+    assert r0.status_code == 200
+    assert r0.content == b"transcoded-bytes-0123"
+    assert "Content-Disposition" not in r0.headers, "非下载不应带 attachment"
+    # ?dl=1 附件
+    rd = client.get(base_url + "?dl=1")
+    assert rd.status_code == 200
+    cd = rd.headers.get("content-disposition", "")
+    assert "attachment" in cd, "?dl=1 应带 Content-Disposition: attachment"
+    # 未知 fmt / 无产物 → 404（filepath 正确，分别测 fmt 枚举校验与产物不存在）
+    rbad = client.get("/api/video-stream-fmt/" + sid + "/tcvid2/m.mp4/nope")
+    assert rbad.status_code == 404
+    rmissing = client.get("/api/video-stream-fmt/" + sid + "/tcvid2/m.mp4/av1")
+    assert rmissing.status_code == 404, "未转码的 av1 应 404"
+
+
+def test_video_transcodes_traversal_blocked(app_server):
+    """路径穿越：filepath 带 ../ 逃出共享目录 → 404（不读非共享视频）。"""
+    client, base = app_server
+    token = _login(client)
+    sid = _folder_share(client, base, token, "tcvid3", {"ok.mp4": b"o" * 10})
+    r = client.get("/api/video-transcodes/" + sid + "/../../outside.mp4")
+    assert r.status_code == 404, "穿越共享目录应 404"
+    r2 = client.get("/api/video-stream-fmt/" + sid + "/../escape.mp4/h264")
+    assert r2.status_code == 404, "取流端点穿越也应 404"
+
+
+def test_video_transcodes_password_share_requires_access(app_server):
+    """密码共享：无 access 令牌 → 403；带有效 access → 200。"""
+    client, base = app_server
+    token = _login(client)
+    up = os.path.join(base, "uploads")
+    os.makedirs(os.path.join(up, "pwdshare"), exist_ok=True)
+    with open(os.path.join(up, "pwdshare", "p.mp4"), "wb") as f:
+        f.write(b"p" * 50)
+    r = client.post("/api/share", data={
+        "filepath": "pwdshare", "share_type": "folder", "days": 1, "password": "pw123",
+    }, headers=_auth(token))
+    sid = r.json()["share_id"]
+    _put_transcode(base, "pwdshare/p.mp4", "_hevc.mp4", b"hevc-bytes")
+    # 无令牌 → 403
+    r1 = client.get("/api/video-transcodes/" + sid + "/pwdshare/p.mp4")
+    assert r1.status_code == 403, "密码共享无 access 应 403"
+    # 用 share-check 换 access 令牌
+    chk = client.post("/api/share-check", data={"share_id": sid, "password": "pw123"})
+    assert chk.json().get("success") is True
+    access = chk.json()["access_token"]
+    r2 = client.get("/api/video-transcodes/" + sid + "/pwdshare/p.mp4",
+                    params={"access": access})
+    assert r2.status_code == 200
+    assert any(x["fmt"] == "hevc" for x in r2.json()["available"])
+
+
+def test_video_stream_fmt_file_share(app_server):
+    """单文件型共享：filepath 必须正好等于 share['path']，命中后取流 200。"""
+    client, base = app_server
+    token = _login(client)
+    # 单文件共享 single/clip.mp4
+    sid, _ = _make_file_share(client, base, token, "single/clip.mp4")
+    _put_transcode(base, "single/clip.mp4", "_h264.mp4", b"fileshare-tc")
+    r = client.get("/api/video-transcodes/" + sid + "/single/clip.mp4")
+    assert r.status_code == 200, "file 型 filepath=share.path 应 200"
+    assert any(x["fmt"] == "h264" for x in r.json()["available"])
+    rs = client.get("/api/video-stream-fmt/" + sid + "/single/clip.mp4/h264")
+    assert rs.status_code == 200 and rs.content == b"fileshare-tc"
+    # 换成别的路径 → 404
+    rbad = client.get("/api/video-transcodes/" + sid + "/other/x.mp4")
+    assert rbad.status_code == 404, "file 型只允许 share.path 本身"

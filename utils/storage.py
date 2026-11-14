@@ -14,6 +14,7 @@ UPLOAD_DIR = "./uploads"          # ④ 用户文件
 THUMB_DIR = "./cache/thumbs"     # ③ 可再生产缓存（缩略图）
 CACHE_ZIP_DIR = "./cache/zips"   # ③ 可再生产缓存（zip 打包）
 DASH_DIR = "./cache/dash"        # ③ 可再生产缓存（fMP4+DASH 视频分片）
+TC_VIDEO_DIR = "./cache/video"   # ③ 可再生产缓存（transcode.py 网页转码产物，按 uploads 相对结构存放）
 
 # ① config/：仅保留"人手工可改"的轻量设置
 FOLDER_PERMS_CONF = "./config/folder_permissions.json"
@@ -425,6 +426,7 @@ def init_config():
     os.makedirs(THUMB_DIR, exist_ok=True)
     os.makedirs(CACHE_ZIP_DIR, exist_ok=True)
     os.makedirs(DASH_DIR, exist_ok=True)
+    os.makedirs(TC_VIDEO_DIR, exist_ok=True)
     # 确保 config / data 目录存在（均被 .gitignore 忽略，属部署数据）
     os.makedirs(os.path.dirname(SETTING_CONF) or ".", exist_ok=True)
     os.makedirs(os.path.dirname(USER_CONF) or ".", exist_ok=True)

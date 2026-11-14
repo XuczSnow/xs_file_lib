@@ -154,6 +154,103 @@ def share_download(share_id: str, password: str = "", access: str = ""):
     )
 
 
+# ---------------------------------------------------------------------------
+# 网页转码产物（transcode.py 默认输出到 cache/video，按 uploads 相对结构存放）。
+# 共享目录树只见原始视频；播放页切选集时用 /api/video-transcodes 查该视频
+# 有哪些转码格式，选中后用 /api/video-stream-fmt 取对应文件流。
+# 格式表须与 tools/transcode.py 的 FORMATS 及前端 share_video.js FMT_LABELS 同口径。
+# ---------------------------------------------------------------------------
+TC_FORMATS = [
+    # (fmt key, 文件名后缀(含扩展名), 前端标签)
+    ("h264", "_h264.mp4", "H.264"),
+    ("hevc", "_hevc.mp4", "HEVC"),
+    ("av1", "_av1.webm", "AV1"),
+    ("vp9", "_vp9.webm", "VP9"),
+]
+
+
+def _tc_root() -> str:
+    """转码产物根目录（cache/video），按调用动态读取，便于测试重定向。"""
+    return os.path.abspath(storage.TC_VIDEO_DIR)
+
+
+def _tc_candidate_paths(rel_video: str) -> list:
+    """给定原始视频的 UPLOAD_DIR 相对路径，定位其各转码产物在 cache/video 下的位置。
+
+    cache/video 按 uploads 相对结构存放（transcode.py 默认输出），故同路径 + 格式后缀。
+    返回 [(fmt_key, label, cache_rel, abs_path)]；cache_rel 为相对 cache/video 的路径
+    （= 端点 B 定位 / 返回给前端用）；abs_path 可能不存在（调用方 isfile 过滤）。
+    """
+    base = _tc_root()
+    rel_video = (rel_video or "").replace("\\", "/").lstrip("/")
+    stem_dir = os.path.dirname(rel_video)                        # 1111/1234（或空）
+    stem = os.path.splitext(os.path.basename(rel_video))[0]      # clip
+    out = []
+    for key, suffix, label in TC_FORMATS:
+        fn = stem + suffix                                        # clip_h264.mp4
+        cache_rel = (stem_dir + "/" + fn) if stem_dir else fn
+        out.append((key, label, cache_rel, os.path.join(base, cache_rel)))
+    return out
+
+
+def _serve_media_range(request: Request, file_path: str, media_type: str,
+                       etag: str, cache_ctl: str, filename: str = None):
+    """通用 Range/206/分块读/ETag/缓存媒体流响应（video-stream 与 video-stream-fmt 共用）。
+
+    - 同步 def + 4MB 分块：弱服务器 / 慢客户端不阻塞事件循环；
+    - ETag：If-None-Match 命中直接 304 省带宽；
+    - Range：206 局部响应，非法/越界 416；无 Range 则 FileResponse 整文件 200；
+    - 可选 filename：?dl=1 下载时加 Content-Disposition: attachment（中文用 RFC5987 编码）。
+    """
+    headers = {
+        "Accept-Ranges": "bytes",
+        "Cache-Control": cache_ctl,
+        "ETag": etag,
+    }
+    if filename:
+        import urllib.parse
+        headers["Content-Disposition"] = (
+            "attachment; filename*=UTF-8''" + urllib.parse.quote(filename))
+
+    file_size = os.path.getsize(file_path)
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=headers)
+
+    range_header = request.headers.get("range")
+    if range_header:
+        try:
+            start_s, end_s = range_header.replace("bytes=", "").split("-")
+            start = int(start_s) if start_s else 0
+            end = int(end_s) if end_s else file_size - 1
+        except ValueError:
+            return JSONResponse({"success": False}, status_code=416)
+        end = min(end, file_size - 1)
+        if start > end or start >= file_size:
+            return Response(status_code=416, headers={
+                **headers, "Content-Range": f"bytes */{file_size}"})
+        length = end - start + 1
+
+        def iter_range():
+            # 4MB 分块：弱服务器下减少系统调用
+            with open(file_path, "rb") as f:
+                f.seek(start)
+                remaining = length
+                while remaining > 0:
+                    chunk = f.read(min(4 * 1024 * 1024, remaining))
+                    if not chunk:
+                        break
+                    yield chunk
+                    remaining -= len(chunk)
+
+        return StreamingResponse(
+            iter_range(), status_code=206, media_type=media_type,
+            headers={**headers,
+                     "Content-Range": f"bytes {start}-{end}/{file_size}",
+                     "Content-Length": str(length)})
+
+    return FileResponse(file_path, media_type=media_type, headers=headers)
+
+
 @router.get("/api/video-stream/{share_id}/{filename:path}")
 def share_video_stream(share_id: str, filename: str, request: Request,
                        password: str = "", access: str = ""):
@@ -194,56 +291,105 @@ def share_video_stream(share_id: str, filename: str, request: Request,
     # 缓存头：密码共享（带 access 令牌）不缓存；公开共享边缘缓存 1 小时
     cache_ctl = "no-store" if (access or password) else "public, s-maxage=3600, max-age=3600"
     etag = f'"{share_id}-{file_size}-{mtime}"'
-    common_headers = {
-        "Accept-Ranges": "bytes",
-        "Cache-Control": cache_ctl,
-        "ETag": etag,
-    }
+    return _serve_media_range(request, video_path, media_type, etag, cache_ctl)
 
-    # 协商 ETag（If-None-Match 命中直接 304，省带宽）
-    if request.headers.get("if-none-match") == etag:
-        return Response(status_code=304, headers=common_headers)
 
-    range_header = request.headers.get("range")
-    if range_header:
-        try:
-            start_s, end_s = range_header.replace("bytes=", "").split("-")
-            start = int(start_s) if start_s else 0
-            end = int(end_s) if end_s else file_size - 1
-        except ValueError:
-            return JSONResponse({"success": False}, status_code=416)
-        end = min(end, file_size - 1)
-        if start > end or start >= file_size:
-            return Response(status_code=416, headers={
-                **common_headers,
-                "Content-Range": f"bytes */{file_size}",
-            })
-        length = end - start + 1
+# ---------------------------------------------------------------------------
+# 网页转码产物（cache/video）：列可用格式 + 取转码文件流。
+# 共享目录树只显示原始视频（uploads）；播放页切选集时用 video-transcodes
+# 查"该视频在 cache/video 下有哪些转码格式"，选中后用 video-stream-fmt 取流。
+# 两个端点的鉴权/过期/穿越守卫与视频流端点同口径（share_unlocked + safe_join）。
+# ---------------------------------------------------------------------------
 
-        def iter_range():
-            # 4MB 分块（原 1MB）：弱服务器下减少系统调用
-            with open(video_path, "rb") as f:
-                f.seek(start)
-                remaining = length
-                while remaining > 0:
-                    chunk = f.read(min(4 * 1024 * 1024, remaining))
-                    if not chunk:
-                        break
-                    yield chunk
-                    remaining -= len(chunk)
+def _tc_guard(share_id: str, rel_video: str, password: str, access: str):
+    """转码端点前置校验：共享存在 / 解锁 / 未过期。
 
-        return StreamingResponse(
-            iter_range(),
-            status_code=206,
-            media_type=media_type,
-            headers={
-                **common_headers,
-                "Content-Range": f"bytes {start}-{end}/{file_size}",
-                "Content-Length": str(length),
-            },
-        )
+    返回 (rel_video, error_resp)；rel_video 为【已归一化】的 UPLOAD_DIR 相对路径
+    （调用方据此定位 cache/video 下的产物）；失败时 error_resp 非空。
+    rel_video 是原始视频的上传相对路径（如 1111/1234/clip.mp4），这里校验它
+    确实落在共享可见范围内（防借端点读非共享视频/穿越），并归一化分隔符。
+    """
+    share = share_util.find_share(share_id)
+    if share is None:
+        return None, JSONResponse({"success": False}, status_code=404)
+    if not share_util.share_unlocked(share, share_id, password, access):
+        return None, JSONResponse({"success": False, "message": "密码错误"}, status_code=403)
+    expire_time = datetime.strptime(share["expire"], "%Y-%m-%d %H:%M:%S")
+    if datetime.now() > expire_time:
+        return None, JSONResponse({"success": False, "message": "共享已过期"}, status_code=410)
 
-    return FileResponse(video_path, media_type=media_type, headers=common_headers)
+    # share_content 的 f.path（即本端点的 filepath）对 file / folder 都是
+    # UPLOAD_DIR 相对全路径（如 1111/1234/clip.mp4），与 cache/video 的目录结构一致。
+    # 归一化分隔符后，校验该路径确实落在【共享可见范围】内（防借端点读非共享视频）：
+    #   - file 型：必须正好等于 share["path"]（那个唯一文件）
+    #   - folder 型：必须位于 share["path"]（共享目录）之下
+    rel = (rel_video or "").replace("\\", "/").lstrip("/")
+    share_path = (share.get("path") or "").replace("\\", "/").lstrip("/")
+    if not rel:
+        return None, JSONResponse({"success": False}, status_code=404)
+    if share.get("type") == "file":
+        if rel != share_path:
+            return None, JSONResponse({"success": False}, status_code=404)
+    else:
+        if not share_path or not (rel == share_path or rel.startswith(share_path + "/")):
+            return None, JSONResponse({"success": False}, status_code=404)
+    # 兜底再走一次 safe_join，确保 rel 无法穿越出 UPLOAD_DIR（历史脏数据防御）
+    if security.safe_join(storage.UPLOAD_DIR, rel) is None:
+        return None, JSONResponse({"success": False}, status_code=404)
+    return rel, None
+
+
+@router.get("/api/video-transcodes/{share_id}/{filepath:path}")
+def share_video_transcodes(share_id: str, filepath: str,
+                           password: str = "", access: str = ""):
+    """列出某原始视频在 cache/video 下可用的转码格式。
+
+    返回 {"success": true, "available": [{"fmt","label","path"}]}；
+    available[].path 为【相对 cache/video】的转码文件路径（前端拼 /api/video-stream-fmt
+    时直接用它，再带上原视频的 filepath 做鉴权定位）。无产物时 available 为空。
+    """
+    rel, err = _tc_guard(share_id, filepath, password, access)
+    if err:
+        return err
+    available = []
+    for key, label, cache_rel, abs_path in _tc_candidate_paths(rel):
+        if os.path.isfile(abs_path):
+            available.append({"fmt": key, "label": label, "path": cache_rel})
+    return {"success": True, "available": available}
+
+
+@router.get("/api/video-stream-fmt/{share_id}/{filepath:path}/{fmt}")
+def share_video_stream_fmt(share_id: str, filepath: str, fmt: str,
+                           request: Request,
+                           password: str = "", access: str = "", dl: int = 0):
+    """取 cache/video 下某转码格式的文件流（Range/206/分块/ETag，与视频流端点同机制）。
+
+    - filepath = 原始视频的 UPLOAD_DIR 相对路径（鉴权/定位用）；
+    - fmt = 转码格式（h264/hevc/av1/vp9，枚举），与 filepath 一起经 _tc_candidate_paths
+      精确定位 cache/video 下的产物——fmt 是枚举而非自由路径，天然防穿越；
+    - 前端先经 /api/video-transcodes 拿到"该视频有哪些 fmt 可用"，选中后拼本端点；
+    - ?dl=1 时按附件下载该转码文件。
+    """
+    rel, err = _tc_guard(share_id, filepath, password, access)
+    if err:
+        return err
+    fmt = (fmt or "").lower()
+    wanted = {k: (label, cache_rel, abs_path)
+              for k, label, cache_rel, abs_path in _tc_candidate_paths(rel)}
+    if fmt not in wanted:
+        return JSONResponse({"success": False}, status_code=404)
+    _label, cache_rel, abs_path = wanted[fmt]
+    if not os.path.isfile(abs_path):
+        return JSONResponse({"success": False}, status_code=404)
+
+    fname = os.path.basename(abs_path)
+    media_type = share_util.video_content_type(fname)
+    file_size = os.path.getsize(abs_path)
+    mtime = int(os.path.getmtime(abs_path))
+    cache_ctl = "no-store" if (access or password) else "public, s-maxage=3600, max-age=3600"
+    etag = f'"{share_id}-tc-{fmt}-{file_size}-{mtime}"'
+    return _serve_media_range(request, abs_path, media_type, etag, cache_ctl,
+                              filename=(fname if dl else None))
 
 
 # ---------------------------------------------------------------------------
@@ -293,9 +439,50 @@ def _dash_guard(share_id: str, filename: str, password: str, access: str):
     return rel, None
 
 
-def _rewrite_mpd_basurl(mpd_text: str, share_id: str, filename: str, access: str) -> str:
+def _complete_mpd_video_codecs(mpd_text: str, full_codecs: str) -> str:
+    """把 MPD 里裸的 HEVC codec 标签（codecs="hvc1"/"hev1"）补全为带 profile/level 的
+    完整串（如 hvc1.1.6.L93.B0）。
+
+    背景：ffmpeg 的 DASH muxer 对 HEVC 只写裸 codec 标签，而浏览器
+    MediaSource.isTypeSupported() 对裸串返回 false（只对带 profile/level 的串认账）
+    → dash.js 按 MPD codecs 做能力 gate 时视频 Representation 被丢弃，只剩音频
+    （"有声无画"）。补全后 gate 通过，视频轨挂上。
+
+    取值策略：
+    - meta 的 video_codecs（生成时 ffprobe 探测到的精确串）→ 优先用它；
+    - 探测不到（存量缓存/meta 缺键）→ 从 MPD 的 width/height 推一个保守 level
+      （L93≈1440p / L123≈4K / L183≈8K，解码器支持高级别必支持低级），
+      声明为 8-bit Main（hvc1.1.6 / hev1.1.6）；
+    - MPD 里没有裸 HEVC 标签（H.264/AV1/VP9 的串本身完整）→ 原样返回。"""
+    # 只处理"裸"HEVC 标签（codecs 后紧跟闭引号，即 4 字符短串）；
+    # avc1.xxxx / av01.xxxx 等完整串不会被此正则命中，天然不受影响
+    bare = re.search(r'codecs="(hvc1|hev1)"', mpd_text)
+    if not bare:
+        return mpd_text
+    brand = bare.group(1)
+    if full_codecs and (full_codecs.startswith("hvc1") or full_codecs.startswith("hev1")):
+        target = full_codecs                       # 生成时探测到的精确串
+    else:
+        # 存量缓存兜底：从 MPD 读 max 分辨率推 level
+        wmax = hmax = 0
+        for wm in re.finditer(r'width="(\d+)"\s+height="(\d+)"', mpd_text):
+            wmax = max(wmax, int(wm.group(1)))
+            hmax = max(hmax, int(wm.group(2)))
+        if wmax > 3840 or hmax > 2160:
+            level = "L183"
+        elif wmax > 2560 or hmax > 1440:
+            level = "L123"
+        else:
+            level = "L93"
+        target = "%s.1.6.%s.B0" % (brand, level)   # 8-bit Main 保守声明
+    return re.sub(r'codecs="%s"' % re.escape(brand),
+                  r'codecs="%s"' % target, mpd_text)
+
+
+def _rewrite_mpd_basurl(mpd_text: str, share_id: str, filename: str, access: str,
+                        video_codecs: str = "") -> str:
     """把 MPD 里 `<BaseURL>x-streamN.mp4</BaseURL>` 改写为指向 media 端点的
-    绝对/相对 URL（dash.js 据此拉分片）。
+    绝对/相对 URL（dash.js 据此拉分片）；并补全裸 HEVC codecs 串（video_codecs）。
 
     分片端点带视频文件名（quote）+ 可选 access 令牌。MPD 里 ffmpeg 写的
     <BaseURL>manifest-streamN.mp4</BaseURL> 是"相对目录 + 分片名"；dash.js 会
@@ -313,7 +500,9 @@ def _rewrite_mpd_basurl(mpd_text: str, share_id: str, filename: str, access: str
         seg_name = m.group(1)                 # 原 <BaseURL> 内容（分片文件名）
         return "<BaseURL>" + prefix + quote(seg_name, safe="") + qsuffix + "</BaseURL>"
 
-    return re.sub(r"<BaseURL>([^<]*)</BaseURL>", _sub, mpd_text)
+    result = re.sub(r"<BaseURL>([^<]*)</BaseURL>", _sub, mpd_text)
+    # 补全裸 HEVC codecs 串（存量缓存即时生效；非 HEVC 源原样返回）
+    return _complete_mpd_video_codecs(result, video_codecs)
 
 
 @router.get("/api/video-dash/{share_id}/{filename:path}")
@@ -337,7 +526,11 @@ def share_video_dash(share_id: str, filename: str,
     if not mpd_path:
         return JSONResponse({"success": False}, status_code=404)
     mpd = open(mpd_path, "r", encoding="utf-8").read()
-    mpd = _rewrite_mpd_basurl(mpd, share_id, filename, access)
+    # 读 meta 里探测到的完整 HEVC codec 串（dashtask 生成时写）；
+    # 存量缓存 meta 无该键（旧版生成）→ 探测不到则用保守默认（serve 侧兜底）
+    meta = dashtask.dash_meta(rel) or {}
+    video_codecs = meta.get("video_codecs", "")
+    mpd = _rewrite_mpd_basurl(mpd, share_id, filename, access, video_codecs)
     cache_ctl = "no-store" if access else "public, max-age=60, s-maxage=60"
     return Response(mpd, media_type="application/dash+xml",
                     headers={"Cache-Control": cache_ctl})

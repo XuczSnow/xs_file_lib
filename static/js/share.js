@@ -368,39 +368,25 @@
      * @param {Object} data 共享上下文（data.name 为共享根目录相对路径）
      * @returns {{ images: Array, videos: Array, imageCount: number, videoCount: number }}
      */
-    /* 多片源视频去重优先级：同一目录 + 同一 stem（clip.mp4 + clip.webm）只保留
-       优先级最高的一个（网页主版本 mp4/HEVC > m4v > webm > ogg）。 */
-    const VIDEO_DEDUP_PRIORITY = ["mp4", "m4v", "webm", "ogg"];
-    function videoPriority(ext) {
-        const i = VIDEO_DEDUP_PRIORITY.indexOf(String(ext).toLowerCase());
-        return i < 0 ? 99 : i;
-    }
-
     /**
-     * 对【扁平文件列表】做多片源去重：按"相对目录/stem（去扩展名、去转码格式后缀、小写）"
-     * 分组，每组只保留优先级最高的一条。返回 [{ file, relPath, ext }]。
-     * clip_h264.mp4 / clip_hevc.mp4 / clip_av1.webm / clip_vp9.webm（或旧的 clip.mp4 + clip.webm）
-     * 都归到同一"片源"，网格/横幅/视频播放页三方口径一致。
+     * 列出【扁平文件列表】里的全部视频文件（不再做"同片源"去重）。
+     * 转码产物已迁到 cache/video（不再进 uploads 共享目录树），目录树里每个视频
+     * 文件都是独立的原始视频，直接全量入列：网格/横幅/播放页三方口径一致。
+     * 返回 [{ file, relPath, ext }]。
      */
-    const FMT_SUFFIX_RE = /_(h264|hevc|av1|vp9)$/i;
-    function dedupeVideoFiles(files, data) {
-        const groups = new Map();
+    function listVideoFiles(files, data) {
+        const out = [];
         (files || []).forEach((f) => {
             const ext = f.extension || X.getExt(f.name);
             if (!X.VIDEO_EXTS.includes(ext)) return;
-            const relPath = fileRelPath(f, data);
-            const key = relPath.replace(/\.[^.]+$/, "").replace(FMT_SUFFIX_RE, "").toLowerCase();
-            const cur = groups.get(key);
-            if (!cur || videoPriority(ext) < videoPriority(cur.ext)) {
-                groups.set(key, { file: f, relPath, ext });
-            }
+            out.push({ file: f, relPath: fileRelPath(f, data), ext });
         });
-        return Array.from(groups.values());
+        return out;
     }
 
     function collectAlbumMedia(node, data) {
         const out = { images: [], videos: [], imageCount: 0, videoCount: 0 };
-        // 先按树收集图片（灯箱/封面用）与全量视频（再交给 dedupeVideoFiles 去重）
+        // 按树收集图片（灯箱/封面用）与全量视频（直接入列，不再去重）
         const videoFlat = [];
         (function walk(n) {
             (n.files || []).forEach((f) => {
@@ -417,8 +403,8 @@
             });
             (n.children || []).forEach(walk);
         })(node);
-        // 视频去重后入 out.videos，计数 = 去重后数量（每个片源只数一次）
-        out.videos = dedupeVideoFiles(videoFlat, data)
+        // 视频全量入列（每个视频文件一条），计数 = 全量数量
+        out.videos = listVideoFiles(videoFlat, data)
             .map((v) => ({ relPath: v.relPath, name: v.file.name, fullPath: v.file.path }));
         out.videoCount = out.videos.length;
         return out;
@@ -516,9 +502,9 @@
         // 全层级媒体文件（分离成图片网格 + 视频网格，不混合）
         const allFiles = data.files || [];
         const folderRels = collectFolderRels(tree, "");
-        // 视频按"片源"去重（clip.mp4 + clip.webm 只显示优先级最高的 mp4），
-        // 与横幅/分区统计（collectAlbumMedia）共用同一 dedupeVideoFiles，口径一致
-        const videoFiles = dedupeVideoFiles(allFiles, data).map((v) => v.file);
+        // 视频全量入列（转码产物已迁出 uploads，目录树里每个视频都是独立原片），
+        // 与横幅/分区统计（collectAlbumMedia）共用 listVideoFiles，口径一致
+        const videoFiles = listVideoFiles(allFiles, data).map((v) => v.file);
 
         // 图片卡片 + 视频卡片（分别渲染两个独立网格）
         let photosHtml = "", videosHtml = "";

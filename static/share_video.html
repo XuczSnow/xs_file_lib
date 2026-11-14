@@ -10,8 +10,8 @@
     <link href="/static/vendor/bootstrap-icons.min.css" rel="stylesheet">
 
     <!-- 视频播放页：样式抽离到 /static/css/share_video.css；与相册页统一浅色风格。
-         ?v=fmt3 与 share_video.js 同步破缓存（旧 CSS 缺 .fmt-badge 规则时徽章裸文本上屏） -->
-    <link href="/static/css/share_video.css?v=fmt3" rel="stylesheet">
+         ?v=fmt5 与 share_video.js 同步破缓存（旧 CSS 缺 .fmt-badge 规则时徽章裸文本上屏） -->
+    <link href="/static/css/share_video.css?v=fmt5" rel="stylesheet">
 
 </head>
 
@@ -35,7 +35,7 @@
                     <button id="nextEp" class="pill-btn" title="下一集" aria-label="下一集" disabled>
                         <span class="lbl">下一集</span><i class="bi bi-skip-end-fill"></i></button>
                     <!-- 格式分片选择（share_video.js 动态渲染"自动/H.264/HEVC/AV1/VP9"下拉框，
-                         当前选集只有一个分片时整个下拉框隐藏） -->
+                         始终显示——无转码产物时至少保留"自动"一项，不整块隐藏） -->
                     <span class="pill-sep"></span>
                     <select id="fmtSelect" class="fmt-select" title="选择视频格式分片" aria-label="选择视频格式"></select>
                     <button id="autoplayBtn" class="pill-btn active" title="自动连播：开" aria-label="自动连播">
@@ -58,17 +58,17 @@
 
     </div>
 
-    <!-- common.js（XSLib）+ 本页逻辑；?v=fmt3 与 share_video.js 同步破缓存
+    <!-- common.js（XSLib）+ 本页逻辑；?v=fmt5 与 share_video.js 同步破缓存
          （旧 common.js 缺 loadMediaBase/resolveUrl 时新 JS 直接 TypeError） -->
-    <script src="/static/js/common.js?v=fmt3"></script>
+    <script src="/static/js/common.js?v=fmt5"></script>
     <!-- fMP4/DASH 加速（路线 B）：内置真实 DASH-IF dash.js v5.3.0；dashjsReady() 探测通过且
          该视频已切分片时走分片播放，manifest 404 / 未切片 / 加载失败 → 自动回退原生
          渐进式。?v=dash53 是 cache-busting 参数，每次升级 dash.js 后更新即可强制重取。 -->
     <script src="/static/vendor/dash.js?v=dash53"></script>
-    <!-- ?v=fmt3 破浏览器缓存：确保拿到 2026-11-10 改动后的 share_video.js
-         （左上角格式徽章 + 下拉精简只列可用格式 + "自动"优先 DASH；
-          历史 ?fmt=dash 深链已归一化为 auto）。每次改动 share_video.js 后递增该参数。 -->
-    <script src="/static/js/share_video.js?v=fmt3"></script>
+    <!-- ?v=fmt5 破浏览器缓存：确保拿到 F1+F2 修复后的 share_video.js
+         （格式下拉始终显示，无转码产物时至少保留"自动"；端点 A 查询失败收敛不重发；
+          转码产物已迁 cache/video，选格式走 /api/video-stream-fmt）。每次改动后递增。 -->
+    <script src="/static/js/share_video.js?v=fmt5"></script>
 
 </body>
 

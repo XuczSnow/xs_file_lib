@@ -73,6 +73,38 @@ def probe_audio_codec(ffmpeg: str, src: Path) -> str:
         return "unknown"
 
 
+def probe_video_codecs(ffmpeg: str, src: Path) -> str:
+    """ffprobe 探测视频轨，返回完整 codec 串（HEVC 补 profile/level，如 hvc1.1.6.L93.B0）。
+
+    与 utils/dashtask._probe_video_codecs 同口径（保持脚本独立，内联一份）：
+    仅对 HEVC 探测（ffmpeg DASH muxer 对 HEVC 只写裸 hvc1/hev1 标签，浏览器 MSE
+    能力 gate 不认裸串）；非 HEVC / 读不到 ffprobe → 返回 ""（serve 侧兜底补全）。"""
+    ffprobe = os.path.join(os.path.dirname(ffmpeg), "ffprobe")
+    if not os.path.exists(ffprobe):
+        return ""
+    _profile_idc = {"main": (1, 6), "main10": (2, 4)}   # general_profile_idc + 约束字节
+    try:
+        r = subprocess.run(
+            [ffprobe, "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=codec_name,profile,width,height",
+             "-of", "csv=p=0", str(src)],
+            capture_output=True, text=True, timeout=60)
+        row = (r.stdout.strip().splitlines() or [""])[0]
+        parts = row.split(",")
+        if len(parts) < 4 or parts[0].strip().lower() != "hevc":
+            return ""
+        profile = parts[1].strip().lower()
+        w, h = int(parts[2]), int(parts[3])
+        level = ("L93" if (w <= 2560 and h <= 1440)
+                 else ("L123" if (w <= 3840 and h <= 2160) else "L183"))
+        if profile in _profile_idc:
+            pidc, constr = _profile_idc[profile]
+            return "hvc1.%d.%d.%s.B0" % (pidc, constr, level)
+        return "hvc1.1.6.%s.B0" % level   # profile 读不出时按 Main 8-bit 保守声明
+    except Exception:
+        return ""
+
+
 def build_command(ffmpeg: str, src: Path, out_dir: Path, seg_duration: int) -> list:
     """构造 ffmpeg 命令：视频 copy + fMP4 DASH 单文件切片。
 
@@ -125,6 +157,8 @@ def run_dash(ffmpeg: str, src: Path, out_dir: Path, seg_duration: int, rel: str 
         "manifest": "manifest.mpd",
         "segments": segments,
         "audio_reencoded": probe_audio_codec(ffmpeg, src) not in ("aac",),
+        # 完整 HEVC codec 串（补全裸 hvc1 用）；非 HEVC / 无 ffprobe → ""
+        "video_codecs": probe_video_codecs(ffmpeg, src),
         "created_by": "make_dash.py",
     }
     (out_dir / "meta.json").write_text(

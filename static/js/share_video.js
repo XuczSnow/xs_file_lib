@@ -30,6 +30,7 @@
     let dashInited = false;           // 当前 dashPlayer 是否已 initialize（v5.3 未初始化前 reset() 会抛异常）
     let dashErrHandler = null;        // player 的 ERROR 监听句柄（回退时清理）
     const dashCache = {};             // "share|rel|access" → 该分片 DASH 是否可用(true/false)
+    const tcCache = {};               // "share|path" → 该原视频在 cache/video 的可用转码格式（端点 A 结果缓存）
 
     /** dash.js player 的 ERROR 事件名（v5.3: dashjs.MediaPlayer.events.ERROR === "error"）。 */
     function dashErrorEvent() {
@@ -103,8 +104,6 @@
     // 转码脚本输出的格式后缀（xxx_hevc.mp4 / xxx_vp9.webm …）→ 友好标签
     const FMT_LABELS = { h264: "H.264", hevc: "HEVC", av1: "AV1", vp9: "VP9" };
     const FMT_SUFFIX_RE = /_(h264|hevc|av1|vp9)$/i;
-    // "自动"模式下浏览器按序自选 <source> 的优先级：越宽兼容/越常用越靠前
-    const FMT_PRIORITY = { h264: 1, hevc: 2, mp4: 3, m4v: 4, vp9: 5, av1: 6, webm: 7, ogg: 8 };
     // “分段”选项值（并入格式下拉）：用 DASH fMP4 播放【原视频】；转码分片不参与分段
     const DASH_FMT = "dash";
 
@@ -127,9 +126,59 @@
         const key = MIME[ext] ? ext : "mp4";
         return { key, label: key === "mp4" ? "MP4" : (key === "webm" ? "WebM" : key.toUpperCase()) };
     }
-    /** 片源分组键：去掉扩展名 + 转码格式后缀（小写），使 4 个格式分片归到同一选集。 */
-    function sourceGroupKey(rel) {
-        return rel.replace(/\.[^.]+$/, "").replace(FMT_SUFFIX_RE, "").toLowerCase();
+
+    // 转码格式 key → 扩展名（供前端识别/兜底；与后端 TC_FORMATS、transcode.py FORMATS 同口径）
+    const FMT_EXT = { h264: "mp4", hevc: "mp4", av1: "webm", vp9: "webm" };
+
+    /** 访问令牌（原始值），供 DASH/渐进式播放路径拼接 URL 用。 */
+    function accessToken() {
+        return new URLSearchParams(window.location.search).get("access") || "";
+    }
+
+    /** 访问令牌的 query 片段（"?access=xxx" 或 ""），供转码端点 A/B 拼接。 */
+    function accessQs() {
+        const a = accessToken();
+        return a ? "?access=" + encodeURIComponent(a) : "";
+    }
+
+    /** 查某原视频（ep）在 cache/video 下可用的转码格式（端点 A），结果 + 在途 Promise 缓存；
+     *  返回 Promise<[{fmt, label, path}]>（path 相对 cache/video，端点 B 用 fmt 定位）。
+     *  ep._tcPending 存"在途 Promise"，ep.transcodes 存"结果数组"，避免并发重复请求。 */
+    function ensureTranscodes(ep) {
+        if (ep.transcodes) return Promise.resolve(ep.transcodes);
+        const key = currentShareId() + "|" + ep.path;
+        if (tcCache[key]) { ep.transcodes = tcCache[key]; return Promise.resolve(ep.transcodes); }
+        if (ep._tcPending) return ep._tcPending;
+        ep._tcPending = X.getJSON(
+            "/api/video-transcodes/" + encodeURIComponent(currentShareId()) +
+            "/" + encodeURIComponent(ep.path) + accessQs())
+            .then((data) => {
+                const arr = (data && data.success && Array.isArray(data.available))
+                    ? data.available : [];
+                tcCache[key] = arr;
+                ep.transcodes = arr;
+                return arr;
+            })
+            .catch(() => {
+                // F1 守护：请求失败（404/网络/mixed content）也收敛为 []（ep.transcodes 为真值，
+                // 后续调用直接短路不再重发；写 tcCache 让切回同一集同样短路，防请求风暴）
+                tcCache[key] = [];
+                ep.transcodes = [];
+                return [];
+            })
+            .finally(() => { ep._tcPending = null; });
+        return ep._tcPending;
+    }
+
+    /** 某转码格式的文件流 URL（端点 B）：/api/video-stream-fmt/{id}/{原视频path}/{fmt}。
+     *  注意中间段是【原视频】路径（鉴权定位用），末段 fmt 才是要取哪个格式产物。 */
+    function fmtStreamUrl(ep, fmt, dl) {
+        const parts = [accessQs()];
+        if (dl) parts.push("dl=1");
+        const qs = parts.filter(Boolean).join("&");
+        return X.resolveUrl("/api/video-stream-fmt/" + encodeURIComponent(currentShareId()) +
+            "/" + encodeURIComponent(ep.path) + "/" + encodeURIComponent(fmt) +
+            (qs ? "?" + qs : ""));
     }
 
     // ---------- 初始化 ----------
@@ -162,11 +211,10 @@
         }
         shareType = data.type;   // "file" | "folder"，决定下载端点
 
-        // 视频按"片源"合并：同目录 + 同 stem（clip_h264.mp4 + clip_hevc.mp4 + clip_av1.webm +
-        // clip_vp9.webm，或旧的 clip.mp4 + clip.webm）合成一条选集；
-        // 每个分片带 fmt 标签（转码格式后缀优先，扩展名兜底）；
-        // 播放时默认按"自动"顺序挂多个 <source> 让浏览器自选可解码分片，
-        // 或在胶囊菜单手动指定某一格式分片（desiredFmt）。
+        // 共享目录树只含【原始视频】（转码产物已迁到 cache/video，不再进 uploads），
+        // 故每个视频文件 = 一条独立选集，ep.sources 恒为单个原视频 source。
+        // "格式"下拉的选项来自端点 A（/api/video-transcodes，查 cache/video 有哪些转码），
+        // 不再靠"同片源后缀合并"——旧的"同目录 _h264/_hevc/_av1/_vp9 并成一条选集"逻辑已废弃。
         const rawVideos = (data.files || [])
             .filter((f) => X.VIDEO_EXTS.includes(f.extension || X.getExt(f.name)))
             .map((f) => {
@@ -175,57 +223,35 @@
                     : f.name;
                 return {
                     name: f.name,
-                    path: f.path,                       // 相对 UPLOAD_DIR 的全路径（缩略图/下载用）
-                    rel,                                // 相对共享根（视频流接口用）
+                    path: f.path,                       // 相对 UPLOAD_DIR 的全路径（缩略图/下载/端点 A、B 用）
+                    rel,                                // 相对共享根（渐进式 /api/video-stream 用）
                     ext: (f.extension || X.getExt(f.name)).toLowerCase(),
                     size: f.size || 0,
                 };
             });
-        const epGroups = new Map();
-        rawVideos.forEach((v) => {
-            const key = sourceGroupKey(v.rel);   // 去扩展名 + 去格式后缀：4 个分片归同组
-            const g = epGroups.get(key);
-            if (!g) {
-                epGroups.set(key, { key, name: "", path: "", rel: "", size: 0, ext: "",
-                                   sources: [Object.assign(v, { fmt: sourceFmt(v.rel) })] });
-            } else {
-                g.sources.push(Object.assign(v, { fmt: sourceFmt(v.rel) }));
-            }
-        });
-        episodes = Array.from(epGroups.values()).map((g) => {
-            // 分片按"自动播放优先级"排序（宽兼容在前）：同组内的 h264→hevc→mp4→vp9→av1
-            g.sources.sort((a, b) =>
-                (FMT_PRIORITY[a.fmt.key] || 9) - (FMT_PRIORITY[b.fmt.key] || 9));
-            const primary = g.sources[0];            // 优先级最高的分片作为"代表"
-            g.name = primary.name
-                .replace(/\.[^.]+$/, "")            // 先去掉扩展名
-                .replace(FMT_SUFFIX_RE, "");        // 再去转码格式后缀（_hevc/_vp9…）
-            g.rel = primary.rel;
-            g.path = primary.path;
-            g.size = primary.size;
-            g.ext = primary.ext;
-            return g;
-        });
+        episodes = rawVideos.map((v) => ({
+            key: v.rel,
+            name: v.name.replace(/\.[^.]+$/, ""),       // 显示名（去扩展名）
+            path: v.path, rel: v.rel, ext: v.ext, size: v.size,
+            sources: [Object.assign({}, v, { fmt: sourceFmt(v.rel) })],  // 原视频
+            transcodes: null, _tcPending: null,          // null=未查端点A；[]/数组=已查结果
+        }));
 
-        // 定位当前集（按 URL 的 filename 匹配，URL 段可能是相对共享根的路径）
-        // 关键：location.pathname 是【编码形态】（share.js 用 encodeURIComponent 拼的，
-        // 中文/空格/% 均为 %xx），必须先解码才能与选集的原始路径比对；
-        // 否则全部失配 → findIndex=-1 → Math.max(0,-1)=0，永远回落到第一集（修复 bug）
+        // 定位当前集（按 URL 的 filename 匹配；URL 段是编码形态，先解码再与原路径比对，
+        // 否则中文/空格文件名全部失配 → 永远回落到第一集）。现在每视频一集，直接按 rel 匹配。
         let urlFile = (m[2] || "").replace(/^\/+/, "");
         try { urlFile = decodeURIComponent(urlFile); } catch (e) { /* 已是原始形态则保持 */ }
-        // 按"片源"定位：URL 命中的可能是该组任一分片（clip.mp4 或 clip.webm），都归到同一选集
         currentEp = Math.max(0, episodes.findIndex(
-            (e) => e.sources.some(
-                (s) => s.rel === urlFile || s.path === urlFile || s.name === urlFile
-            )
+            (e) => e.rel === urlFile || e.path === urlFile || e.name === urlFile
         ));
 
-        // 格式深链：?fmt=hevc / ?fmt=mp4 等；?fmt=dash 为旧"分段"深链兼容，
-        // 归一化为 auto（现在"自动"已默认优先 DASH，等价语义）
+        // 格式深链：?fmt=auto / ?fmt=h264 / ?fmt=hevc / ?fmt=av1 / ?fmt=vp9；
+        // ?fmt=dash 为旧"分段"深链兼容，归一化为 auto（现在"自动"已默认优先 DASH）。
+        // 非法值（如旧的 mp4/webm/…）保持 auto（loadEpisode 会按该视频实际有无转码再归一）
         const urlFmt = (params.get("fmt") || "").toLowerCase();
         if (urlFmt === DASH_FMT) desiredFmt = "auto";
         else if (urlFmt && urlFmt !== "auto" &&
-            (FMT_LABELS[urlFmt] || ["mp4", "m4v", "webm", "ogg"].includes(urlFmt))) {
+            (["h264", "hevc", "av1", "vp9"].includes(urlFmt))) {
             desiredFmt = urlFmt;
         }
 
@@ -254,9 +280,10 @@
         document.getElementById("nextEp").addEventListener("click",
             () => currentEp < episodes.length - 1 && loadEpisode(currentEp + 1, true));
 
-        // 菜单栏：下载当前视频（按共享类型选端点：单文件 → share-download，
-        // 文件夹 → share-folder-download；密码共享带 access 令牌）；
-        // 单文件型共享时跟随"当前选中的格式分片"下载（文件夹型端点按分片 rel 下载）
+        // 菜单栏：下载当前视频。
+        //  - 手动选了【转码格式】→ 下载 cache/video 的转码文件（端点 B ?dl=1，带 attachment）；
+        //  - 否则（自动/DASH 回退等，片源=原视频）按共享类型选下载端点：
+        //      单文件 → /api/share-download/{id}；文件夹 → /api/share-folder-download/{id}/{rel}
         const dlBtn = document.getElementById("downloadBtn");
         if (dlBtn) {
             dlBtn.addEventListener("click", () => {
@@ -265,6 +292,11 @@
                 const src = activeSource(ep);
                 const acc = new URLSearchParams(window.location.search).get("access");
                 const qs = acc ? "?access=" + encodeURIComponent(acc) : "";
+                if (src && src.isTranscode) {
+                    // 转码文件：端点 B ?dl=1（Content-Disposition: attachment）
+                    window.location.href = fmtStreamUrl(ep, desiredFmt, true);
+                    return;
+                }
                 if (shareType === "file") {
                     window.location.href = X.resolveUrl("/api/share-download/" + encodeURIComponent(currentShareId()) + qs);
                 } else {
@@ -318,59 +350,59 @@
 
     // ---------- 格式胶囊组（视频下方菜单栏内） ----------
 
-    /** 取某选集"当前应播放/下载"的分片：
-     *  - auto/dash：试过 DASH（成功或回退）时片源都是【原视频】（DASH 播原视频分片，
-     *    回退也只挂原视频，片源一致）；未试 DASH（该集无原视频）→ 浏览器自选最高优先分片
-     *  - 其它：按 fmt.key 精确匹配，匹配不到回落到最高优先分片。 */
+    /** 取某选集"当前应播放/下载"的片源：
+     *  - auto/dash：都是【原视频】（DASH 分段播原视频，回退也只挂原视频，片源一致）
+     *  - 手动选转码格式：若该格式在 ep.transcodes（端点 A 查得）里 → 返回"转码片源"
+     *    （isTranscode=true，播放/下载走 /api/video-stream-fmt），否则回原视频 */
     function activeSource(ep) {
         if (!ep || !ep.sources.length) return null;
         if (desiredFmt === "auto" || desiredFmt === DASH_FMT) {
-            const orig = dashSourceOf(ep);
-            if (dashStatus.tried && orig) return orig;
-            return ep.sources[0];
+            return ep.sources[0];   // 自动/DASH 均为原视频
         }
-        const hit = ep.sources.find((s) => s.fmt.key === desiredFmt);
-        return hit || ep.sources[0];
+        const tc = (ep.transcodes || []).find((t) => t.fmt === desiredFmt);
+        if (tc) return { fmt: { key: tc.fmt, label: tc.label }, isTranscode: true,
+                         ext: FMT_EXT[tc.fmt] || "mp4" };
+        return ep.sources[0];
     }
 
-    /** 渲染格式选择下拉框（精简文案，只列当前选集实际可用的格式分片）：
-     *  "自动" = 优先 DASH fMP4 分段播放【原视频】，失败自动回退浏览器自选渐进式（同层级，
-     *  不再单列"分段"项）；其余选项为该选集实际存在的各格式分片。
-     *  选集只有一个分片时隐藏整个下拉框（无可选项）。
-     *  位置：注入到 #fmtSelect（share_video.html 胶囊菜单栏内、与功能按钮同一行）。 */
+    /** 渲染格式选择下拉框（选项 = "自动" + 该视频在 cache/video 下【实际存在】的转码格式）：
+     *  - "自动" = 优先 DASH fMP4 分段播放【原视频】，失败自动回退渐进式（原视频）；
+     *  - 各转码格式（H.264/HEVC/AV1/VP9）来自端点 A /api/video-transcodes（查 cache/video），
+     *    只有真实存在才列；选中某格式 → 播放/下载走端点 B /api/video-stream-fmt。
+     *  F2：下拉【始终显示】（无转码产物时至少保留"自动"一项），不再整块隐藏——
+     *    避免从"有格式"的集切到"无格式"的集时下拉突然消失、用户误以为功能坏了。
+     *  ep.transcodes 尚未查询（null）时先异步 ensure 再重渲染。 */
     function renderFmtGroup() {
         const host = document.getElementById("fmtSelect");
         if (!host) return;
-        const sep = host.previousElementSibling;   // .pill-sep 与格式组联动显隐
         const ep = episodes[currentEp];
-        const keys = new Set();
-        if (ep) ep.sources.forEach((s) => keys.add(s.fmt.key));
-        const hasFmtOptions = keys.size >= 2;
-        if (!hasFmtOptions) {
-            host.style.display = "none";
-            if (sep) sep.style.display = "none";
+        if (!ep) return;
+        if (ep.transcodes === null) {
+            ensureTranscodes(ep).then(() => renderFmtGroup());   // 首次进入、尚未查询
             return;
         }
+        const sep = host.previousElementSibling;   // .pill-sep 与格式组联动显隐
+        const tcs = ep.transcodes || [];           // [{fmt,label,path}]
+        // F2：始终显示下拉（至少含"自动"一项），不再因"无转码产物"而整个隐藏——
+        // 避免用户从"有格式"的集切到"无格式"的集时下拉突然消失、误以为功能坏了。
+        // 有转码格式时列 auto + 各真实存在的格式；无时仅 auto（选中即原视频/DASH 分段播放）。
+        const opts = ["auto"].concat(tcs.map((t) => t.fmt));
         host.style.display = "";
         if (sep) sep.style.display = "";
-        // "自动"优先 DASH：title 随 dashStatus 给当前实际状态（DASH 分段/已回退原因）
-        const opts = ["auto"].concat(Array.from(keys));
-        const fmtName = (k) =>
-            k === "auto" ? "自动"
-                : (FMT_LABELS[k] || (ep && ep.sources.find((s) => s.fmt.key === k))?.fmt.label || k.toUpperCase());
+        const labelOf = (k) =>
+            k === "auto" ? "自动" : (FMT_LABELS[k] || tcs.find((t) => t.fmt === k)?.label || k.toUpperCase());
         const optTitle = (k) => k === "auto"
             ? (dashStatus.ok ? "DASH 分段播放（原视频）"
                 : (dashStatus.tried ? (dashStatus.reason || "已回退渐进式")
-                : "优先 DASH 分段，失败回退浏览器自选"))
-            : "";
-        // desiredFmt 归一化：历史 ?fmt=dash 深链（"分段"已并入"自动"）映射为 auto；
-        // 其余若不在可选集合内（如切到没有该格式的分集），回落"自动"
+                : "优先 DASH 分段，失败回退渐进式"))
+            : "播放 cache/video 的转码版本";
+        // desiredFmt 归一化：历史 ?fmt=dash 深链映射 auto；其余不在可选集合回落 auto
         let shown = desiredFmt;
         if (shown === DASH_FMT) shown = "auto";
         else if (shown !== "auto" && !opts.includes(shown)) shown = "auto";
         if (shown !== desiredFmt) desiredFmt = shown;
         host.innerHTML = opts.map((k) =>
-            `<option value="${esc(k)}"${k === shown ? " selected" : ""} ${optTitle(k) ? 'title="' + esc(optTitle(k)) + '"' : ""}>${fmtName(k)}</option>`
+            `<option value="${esc(k)}"${k === shown ? " selected" : ""} ${optTitle(k) ? 'title="' + esc(optTitle(k)) + '"' : ""}>${labelOf(k)}</option>`
         ).join("");
         host.onchange = () => {
             desiredFmt = host.value;
@@ -449,12 +481,9 @@
             encodeURIComponent(currentShareId()) + "/" + encodeURIComponent(rel) + qs);
     }
 
-    /** 原生 <source> 渐进式播放（无 DASH / DASH 回退时）。
-     *  @param {boolean} [onlyOriginal] 为 true 时只挂"原视频"这一个 source
-     *   （DASH 回退场景，保持"分段片源=原视频"一致）；否则按 desiredFmt 挂对应分片。 */
-    function useProgressive(ep, accessParam, onlyOriginal) {
-        // 切回渐进式前清理 DASH 播放器：reset() 只在已 initialize 后安全（v5.3 裸调会抛异常）；
-        // destroy() 彻底清场（MediaSource 拆除），下次 DASH 会话重新 create
+    /** 清理 DASH 播放器（reset 只在已 initialize 后安全 + destroy 彻底清场）。
+     *  切回原生渐进式 / 转码流前调用，避免 dash.js 会话残留踩源。 */
+    function teardownDashPlayer() {
         if (dashPlayer) {
             if (dashErrHandler) {
                 try { dashPlayer.off(dashErrorEvent(), dashErrHandler); } catch (e) {}
@@ -465,18 +494,36 @@
             dashPlayer = null;
         }
         dashInited = false;
+    }
+
+    /** 播放某原视频的【转码格式产物】（端点 B /api/video-stream-fmt/{id}/{path}/{fmt}）。
+     *  挂单个 <source>（格式是用户明确选的，不再多 source 连挂让浏览器自选）。
+     *  先 teardownDashPlayer 清掉 DASH 会话，再挂转码流。 */
+    function playTranscode(ep, fmt, accessParam) {
+        teardownDashPlayer();
+        const qs = accessParam ? "?access=" + encodeURIComponent(accessParam) : "";
+        while (video.firstChild) video.removeChild(video.firstChild);
+        const so = document.createElement("source");
+        so.src = fmtStreamUrl(ep, fmt, false);
+        so.type = MIME[(FMT_EXT[fmt] || "mp4")] || "video/mp4";
+        video.appendChild(so);
+        video.load();
+    }
+
+    /** 原生 <source> 渐进式播放（无 DASH / DASH 回退时）。
+     *  @param {boolean} [onlyOriginal] 为 true 时只挂"原视频"这一个 source
+     *   （DASH 回退场景，保持"分段片源=原视频"一致）；否则挂全部原视频 source。 */
+    function useProgressive(ep, accessParam, onlyOriginal) {
+        // 切回渐进式前清理 DASH 播放器（见 teardownDashPlayer）
+        teardownDashPlayer();
         const qs = accessParam ? "?access=" + encodeURIComponent(accessParam) : "";
         const streamUrl = (rel) =>
             X.resolveUrl("/api/video-stream/" + encodeURIComponent(currentShareId()) +
             "/" + encodeURIComponent(rel) + qs);
-        let pickList;
-        if (onlyOriginal) {
-            pickList = ep.sources.filter(isOriginalSource);
-            if (!pickList.length) pickList = ep.sources;   // 无原视频兜底全部分片
-        } else {
-            pickList = desiredFmt === "auto" ? ep.sources
-                : ep.sources.filter((s) => s.fmt.key === desiredFmt);
-        }
+        // 现在每选集只有一个原视频 source；onlyOriginal 语义保留（DASH 回退只挂原视频）
+        const pickList = onlyOriginal
+            ? ep.sources.filter(isOriginalSource)
+            : ep.sources;
         const useList = (pickList.length ? pickList : ep.sources);
         while (video.firstChild) video.removeChild(video.firstChild);
         useList.forEach((s) => {
@@ -566,14 +613,11 @@
         return true;
     }
 
-    /** 取"分段"片源：只取【原视频】（无转码格式后缀）；按优先级取第一个。
-     *  转码分片（_h264/_hevc/_av1/_vp9）永不分段。无原视频返回 null（下拉不显示分段项）。 */
+    /** 取"分段"片源：即该选集的【原视频】（现在每选集只有一个 source）。
+     *  转码产物（cache/video）永不参与 DASH 分段。无原视频返回 null。 */
     function dashSourceOf(ep) {
-        if (!ep) return null;
-        const originals = ep.sources.filter(isOriginalSource);
-        if (!originals.length) return null;
-        return originals.slice().sort((a, b) =>
-            (FMT_PRIORITY[a.fmt.key] || 99) - (FMT_PRIORITY[b.fmt.key] || 99))[0];
+        if (!ep || !ep.sources.length) return null;
+        return ep.sources[0];
     }
 
     function loadEpisode(idx, updateHistory, opts = {}) {
@@ -586,23 +630,34 @@
         dashStatus = { tried: false, ok: false, reason: "" };
         // 历史 ?fmt=dash 深链残留值归一化为 auto（renderFmtGroup 也会再归一，双保险）
         if (desiredFmt === DASH_FMT) desiredFmt = "auto";
-        // 回落：新选集没有当前所选格式的分片（如"下一集"切过去）时，还原"自动"
-        if (desiredFmt !== "auto" && !ep.sources.some((s) => s.fmt.key === desiredFmt)) {
-            desiredFmt = "auto";
-        }
 
-        const accessParam = new URLSearchParams(window.location.search).get("access");
-        // "自动"默认优先 DASH 分段播放【原视频】：可用时走分片（秒起播/拖动只拉小片），
-        // 失败自动回退渐进式（只挂原视频，片源一致）；用户手动指定具体格式时一律渐进式。
-        if ((desiredFmt === "auto" || desiredFmt === DASH_FMT) && originalOfEp) {
+        const accessParam = accessToken();
+        // 播放决策：
+        //  - 自动：优先 DASH 分段播放【原视频】，失败回退渐进式（原视频）；
+        //  - 手动选转码格式：确保该格式在 cache/video 存在 → 挂转码流（端点 B）；
+        //    该视频没有此格式 → 回落"自动"（原视频渐进式）。转码格式不进 DASH 分段。
+        if (desiredFmt === "auto" && originalOfEp) {
             if (!tryPlayDash(ep, originalOfEp, accessParam)) {
                 useProgressive(ep, accessParam, true);   // 只挂原视频
             }
+            updateFmtBadge();
+            updateTitle();
         } else {
-            useProgressive(ep, accessParam, false);
+            const doTranscode = (tcs) => {
+                if (currentEp !== idx) return;           // 用户已切走，旧闭包不挂
+                const hit = tcs.find((t) => t.fmt === desiredFmt);
+                if (hit) {
+                    playTranscode(ep, desiredFmt, accessParam);
+                } else {
+                    desiredFmt = "auto";                  // 该视频无此转码格式 → 回落自动（原视频）
+                    useProgressive(ep, accessParam, false);
+                }
+                updateFmtBadge();
+                updateTitle();
+            };
+            if (ep.transcodes) doTranscode(ep.transcodes);   // 已查过（切回/同集换格式）
+            else ensureTranscodes(ep).then(doTranscode);     // 首次/深链：异步查 cache/video
         }
-        updateFmtBadge();   // 播放决定后刷新左上角格式徽章（DASH 回退路径内已刷新，此处兜底）
-        updateTitle();      // 标签页标题（与 refreshDashOption 同一来源，避免双份计算漂移）
 
         // 菜单栏：上一集/下一集按钮随当前集启用/禁用
         document.getElementById("prevEp").disabled = idx <= 0;

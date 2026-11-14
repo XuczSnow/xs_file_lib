@@ -95,6 +95,56 @@ def _probe_audio_codec(ffmpeg: str, src: str) -> str:
         return "unknown"
 
 
+# ---- 视频 codec 探测（补全 DASH MPD 的 codecs 串，供 serve 侧改写）----
+# ffmpeg 的 DASH muxer 对 HEVC 只写裸 "hvc1"/"hev1"（不带 profile/level），而浏览器
+# MediaSource.isTypeSupported() 对裸 hvc1 返回 false（只对带 profile/level 的具体串认账）
+# → dash.js 按 MPD 的 codecs 做能力 gate 时视频轨被丢，只剩音频（"有声无画"）。
+# 这里用 ffprobe 读 codec_name + profile + 分辨率，拼出完整的 codec 串存进 meta，
+# serve 侧 _rewrite_mpd_basurl 用它补全 MPD（存量缓存即时生效，无需重切）。
+
+# HEVC hvc1 的 general_profile_idc：Main=1 / Main10=2（8-bit 与 10-bit 的 4:2:0 约束字节）
+_HEVC_PROFILE_IDC = {"main": (1, 6), "main10": (2, 4)}
+# HEVC 按分辨率取保守 level 上界（支持该 level 的解码器必然支持更低）：
+#   1440p 及以下 → L93（实测 1440p 浏览器对 hvc1.1.6.L93.B0 返回 true）
+#   4K 及以下    → L123（4K60 级）；8K 及以上      → L183
+def _hevc_level(w: int, h: int) -> str:
+    if w <= 2560 and h <= 1440:
+        return "L93"
+    if w <= 3840 and h <= 2160:
+        return "L123"
+    return "L183"
+
+
+def _probe_video_codecs(ffmpeg: str, src: str) -> str:
+    """ffprobe 探测视频轨，返回完整 codec 串（如 hvc1.1.6.L93.B0 / av01.0.12M.08 / avc1.4d401f）。
+
+    读不到 ffprobe / 非 HEVC（ffmpeg 本就写全串）→ 返回 ""（serve 侧保留 MPD 原值）。
+    仅对 HEVC 补全（这是唯一被 muxer 写裸串、且浏览器 gate 严格的情况；
+    H.264/AV1/VP9 的 MPD codecs 串本身完整，无需补）。"""
+    ffprobe = os.path.join(os.path.dirname(ffmpeg), "ffprobe")
+    if not os.path.exists(ffprobe):
+        return ""
+    try:
+        r = subprocess.run(
+            [ffprobe, "-v", "error", "-select_streams", "v:0",
+             "-show_entries", "stream=codec_name,profile,width,height",
+             "-of", "csv=p=0", src],
+            capture_output=True, text=True, timeout=60)
+        row = (r.stdout.strip().splitlines() or [""])[0]
+        parts = row.split(",")
+        if len(parts) < 4 or parts[0].strip().lower() != "hevc":
+            return ""
+        profile = parts[1].strip().lower()
+        w, h = int(parts[2]), int(parts[3])
+        if profile in _HEVC_PROFILE_IDC:
+            pidc, constr = _HEVC_PROFILE_IDC[profile]
+            # hvcC 品牌：ffmpeg 默认打 hvc1（hvcC 配置盒）
+            return "hvc1.%d.%d.%s.B0" % (pidc, constr, _hevc_level(w, h))
+        return "hvc1.1.6.%s.B0" % _hevc_level(w, h)   # profile 读不出时按 Main 8-bit 保守声明
+    except Exception:
+        return ""
+
+
 def _segment(src_abs: str, out_dir: str, ffmpeg: str) -> bool:
     """视频 copy + fMP4 单文件 DASH 切片；成功返回 True。"""
     audio_codec = _probe_audio_codec(ffmpeg, src_abs)
@@ -178,6 +228,8 @@ def ensure_dash(rel: str) -> str:
         meta = {
             "rel": rel, "fingerprint": fp, "single_file": True,
             "manifest": "manifest.mpd", "segments": segments,
+            # 完整视频 codec 串（HEVC 补全用；非 HEVC 源为空，serve 侧保留 MPD 原值）
+            "video_codecs": _probe_video_codecs(ffmpeg, src_abs),
             "source": src_abs, "created_by": "utils/dashtask.py",
         }
         with open(meta_path, "w", encoding="utf-8") as f:
