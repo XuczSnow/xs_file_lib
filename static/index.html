@@ -336,6 +336,51 @@
                     </div>
                 </div>
 
+                <!-- 系统更新：在线检查/拉取远程代码 + 可选自动重启（仅管理员可见） -->
+                <div class="card p-3 setting-card" id="systemUpdateCard">
+                    <div class="setting-card-title"><i class="bi bi-cloud-arrow-down"></i> 系统更新</div>
+                    <div class="row g-3">
+                        <div class="col-12" id="sysInfoLine">
+                            <div class="text-muted small">
+                                当前版本 <b id="sysVersion">-</b>（commit <code id="sysCommit">-</code>）
+                            </div>
+                            <div class="text-muted small mt-1" id="sysLastUpdate">尚未更新</div>
+                            <button class="btn btn-sm btn-outline-primary mt-2" id="sysCheckBtn">检查更新</button>
+                            <span class="text-muted small" id="sysCheckResult"></span>
+                        </div>
+                        <div class="col-12" id="sysUpdatePanel" style="display:none">
+                            <div class="small text-muted mb-1">
+                                远程 <code id="sysBehindCount">0</code> 个提交可用：
+                            </div>
+                            <ul class="list-unstyled small mb-2" id="sysCommitList"
+                                style="max-height:120px;overflow:auto;border:1px solid var(--bs-border-color);border-radius:6px;padding:6px 10px"></ul>
+                            <div class="d-flex flex-wrap gap-2 align-items-center">
+                                <button class="btn btn-sm btn-primary" id="sysApplyBtn">立即更新</button>
+                                <button class="btn btn-sm btn-outline-secondary" id="sysRollbackBtn">回滚到上一版本</button>
+                                <span class="text-danger small" id="sysDirtyWarn" style="display:none"></span>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="form-text mb-1">重启命令（更新/回滚完成后自动执行；也可用于下方"立即重启"手动重启服务；留空则不自动重启）</div>
+                            <div class="input-group input-group-sm">
+                                <input type="text" class="form-control" id="sysRestartCmd"
+                                       placeholder="如 systemctl restart xs-file-lib（Linux）；Windows 计划任务: schtasks /End /TN "XsFileLibService" && schtasks /Run /TN "XsFileLibService"">
+                                <button class="btn btn-outline-danger" id="sysRestartBtn" type="button">立即重启</button>
+                            </div>
+                            <div class="form-text">
+                                命令原样交给 shell 执行（sleep 2 后 detached 运行），不与其它输入拼接；
+                                仅管理员可配置。public 仓库匿名 <code>git fetch</code>，无需配置密钥。
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check form-switch">
+                                <input type="checkbox" class="form-check-input" id="sysUpdateEnabled" checked>
+                                <label class="form-check-label" for="sysUpdateEnabled">启用在线更新</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- 二维码样式：左侧配色/纠错/模块尺寸表单，右侧真实二维码预览（编码 git 库地址） -->
                 <div class="card p-3 setting-card">
                     <div class="setting-card-title"><i class="bi bi-qr-code-scan"></i> 二维码样式</div>

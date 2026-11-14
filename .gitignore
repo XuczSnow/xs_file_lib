@@ -79,6 +79,17 @@ cache/
 /*.zip
 
 # ==========================
+# 安装产物（install.py 生成，不入库；serve.py 是源码，保留跟踪）
+# ==========================
+run.bat
+run.sh
+service_run.bat
+xs-file-lib.service
+# NSSM 可执行文件（用户自行下载到项目根 / PATH 供 --service 使用，第三方二进制不入库）
+nssm.exe
+nssm
+
+# ==========================
 # 测试
 # ==========================
 

@@ -28,6 +28,7 @@ from routers import (
     share_log,
     share_media,
     shares,
+    system,
     upload_links,
     users,
     zip_tasks,
@@ -66,6 +67,7 @@ for router in (
     settings.router,
     upload_links.router,
     zip_tasks.router,
+    system.router,        # 在线更新（system-info/check-update/apply-update/rollback-update）
 ):
     app.include_router(router)
 
@@ -100,6 +102,12 @@ _PROTECTED_EXACT = (
     "/api/upload",    # POST 上传文件（公开的是 /api/upload-info、/api/guest-upload）
     "/api/share",     # POST 创建共享（公开的是 /api/share-info 等 /api/share-*）
     "/api/shares",    # 列全部共享记录（含密码哈希，管理侧；兼容旧接口）
+    # 在线更新（管理侧，端点内再验 user_manage）：4 端点均受 token 保护
+    "/api/system-info",
+    "/api/check-update",
+    "/api/apply-update",
+    "/api/rollback-update",
+    "/api/restart-service",
 )
 
 

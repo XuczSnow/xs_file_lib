@@ -11,10 +11,13 @@
 """
 import json
 import os
+import shutil
+import subprocess
+import time
 
 import pytest
 
-from utils import storage, dashtask
+from utils import storage, dashtask, updater
 
 
 # ---------- helpers（与 test_app.py 同口径）----------
@@ -540,3 +543,162 @@ def test_video_stream_fmt_file_share(app_server):
     # 换成别的路径 → 404
     rbad = client.get("/api/video-transcodes/" + sid + "/other/x.mp4")
     assert rbad.status_code == 404, "file 型只允许 share.path 本身"
+
+
+# ---------- 7) 在线更新（updater：独立临时 git 仓库 + 本地 bare remote）----------
+# 全部在 tmp_path 内造仓库，重定向 updater._git_dir/_log_path，并打桩 _smoke_check /
+# _schedule_restart（不真跑 py_compile/import main、不真重启服务），绝不碰真实仓库。
+
+def _git_repo_env(tmp_path, monkeypatch):
+    """造一个本地工作仓库（落后 origin/main 一个提交）。
+
+    序列（关键：先让 work push c1，再 clone，避免历史分叉）：
+      1. 建 bare origin + work，work 上 main 分支提交 c1 → push（origin/main = c1）
+      2. clone origin 到 pusher（此时含 main=c1）→ 在 main 上提交 c2 → push
+      3. origin/main = c2，本地 work 停在 c1 → 落后 1
+    - 重定向 storage.UPDATER_GIT_DIR / UPDATER_LOG_CONF 到 tmp_path；
+    - 打桩 _smoke_check（恒通过）、_schedule_restart（不重启，返回 False）。
+    返回 work 仓库 Path。git init/--bare <path> 会自建目录；clone 后全程用 -C。"""
+    work, origin, pusher = tmp_path / "work", tmp_path / "origin.git", tmp_path / "pusher"
+
+    def run(*cmd, cwd=None):
+        subprocess.run(list(cmd), cwd=str(cwd) if cwd else None,
+                       check=True, capture_output=True, text=True)
+
+    def g(repo, *args):
+        run("git", "-C", str(repo), *args)
+
+    # 1) origin + work：main 分支提交 c1 并 push
+    run("git", "init", "--bare", str(origin))
+    run("git", "init", str(work))
+    g(work, "config", "user.email", "t@t")
+    g(work, "config", "user.name", "t")
+    g(work, "checkout", "-b", "main")
+    (work / "a.txt").write_text("v1")
+    g(work, "add", ".")
+    g(work, "commit", "-m", "c1")
+    g(work, "remote", "add", "origin", str(origin))
+    g(work, "push", "-q", "origin", "main")           # origin/main = c1
+
+    # 2) clone（含 main=c1）→ main 上提交 c2 → push（origin/main = c2）
+    run("git", "clone", "-q", str(origin), str(pusher))
+    g(pusher, "config", "user.email", "t@t")
+    g(pusher, "config", "user.name", "t")
+    g(pusher, "checkout", "-q", "main")                # 对齐 origin/main（c1）
+    (pusher / "b.txt").write_text("v2")
+    g(pusher, "add", ".")
+    g(pusher, "commit", "-m", "c2")
+    g(pusher, "push", "-q", "origin", "main")          # origin/main = c2，work 落后 1
+
+    # 重定向 + 打桩（不碰真实仓库、不真跑自检/重启）
+    # raising=False：updater 用 getattr(storage, "UPDATER_GIT_DIR", None) 读取，
+    # 属性可不存在，允许 setattr 新建
+    monkeypatch.setattr(storage, "UPDATER_GIT_DIR", str(work), raising=False)
+    monkeypatch.setattr(storage, "UPDATER_LOG_CONF", str(tmp_path / "update_log.json"), raising=False)
+    monkeypatch.setattr(updater, "_smoke_check", lambda cwd: "")
+    monkeypatch.setattr(updater, "_schedule_restart", lambda: False)
+    return work
+
+
+def _head(work):
+    return subprocess.run(["git", "-C", str(work), "rev-parse", "HEAD"],
+                          capture_output=True, text=True).stdout.strip()
+
+
+def test_updater_check_update_structure(tmp_path, monkeypatch):
+    """check_update 只读比较：本地落后 1 → behind=1、列 commit、current!=latest、工作区干净。"""
+    work = _git_repo_env(tmp_path, monkeypatch)
+    chk = updater.check_update()
+    assert chk["ok"] is True
+    assert chk["behind"] == 1, "本地应落后 1 个提交"
+    assert chk["commits"], "应列出落后的 commit"
+    assert len(chk["current"]) == 8 and len(chk["latest"]) == 8
+    assert chk["current"] != chk["latest"]
+    assert chk["dirty"] == [], "干净工作区"
+
+
+def test_updater_apply_updates_head_and_logs(tmp_path, monkeypatch):
+    """apply_update：HEAD 前进 + update_log 落一条 ok；二次 apply 命中 noop（已是最新）。"""
+    work = _git_repo_env(tmp_path, monkeypatch)
+    old = _head(work)
+    res = updater.apply_update(actor="tester")
+    assert res["ok"] is True and res.get("noop") is not True
+    assert res["from"] == old[:8] and res["to"] != res["from"]
+    assert _head(work) != old, "HEAD 应前进到 origin/main"
+    assert any(e.get("result") == "ok" for e in updater._load_log()), "应记录一条 ok"
+    again = updater.apply_update(actor="tester")
+    assert again.get("noop") is True, "更新后已是最新，二次 apply 应 noop"
+
+
+def test_updater_apply_rejects_dirty_worktree(tmp_path, monkeypatch):
+    """脏工作区（有未跟踪文件）→ apply 被拒绝，HEAD 不变（防误伤本地改动）。"""
+    work = _git_repo_env(tmp_path, monkeypatch)
+    old = _head(work)
+    (work / "untracked.txt").write_text("dirty")
+    res = updater.apply_update(actor="tester")
+    assert res["ok"] is False
+    assert "未提交" in res["error"] or "untracked.txt" in res["error"]
+    assert _head(work) == old, "被拒绝时 HEAD 不应变"
+
+
+def test_updater_rollback_resets_to_old_head(tmp_path, monkeypatch):
+    """rollback：apply 后一键回到 apply 前的旧 HEAD（24h 窗口内）。"""
+    work = _git_repo_env(tmp_path, monkeypatch)
+    old = _head(work)
+    assert updater.apply_update(actor="tester")["ok"] is True
+    rb = updater.rollback(actor="tester")
+    assert rb["ok"] is True
+    assert _head(work) == old, "rollback 应复位到 apply 前的旧 HEAD"
+    assert any(e.get("result") == "rollback" for e in updater._load_log())
+
+
+def test_restart_service_requires_command(app_server, monkeypatch):
+    """/api/restart-service：未配置 restart_command → need_cmd（不猜命令）；
+    配置后 → ok=True + detached 调度成功（打桩，不真重启）+ update_log 留痕；
+    system-info 把 manual-restart 折叠成 restart_count，不混入 update_log。"""
+    client, _ = app_server
+    token = _login(client)
+    called = []
+    monkeypatch.setattr(updater, "_schedule_restart", lambda: called.append(1) or True)
+    cfg = storage.load_config()
+    cfg["restart_command"] = ""
+    storage.save_json(storage.SETTING_CONF, cfg)
+    r = client.post("/api/restart-service", headers=_auth(token))
+    assert r.status_code == 200 and r.json()["ok"] is False and r.json()["need_cmd"] is True
+    assert not called, "未配置命令时不应调度重启"
+    cfg["restart_command"] = "echo marker-restart"
+    storage.save_json(storage.SETTING_CONF, cfg)
+    r2 = client.post("/api/restart-service", headers=_auth(token))
+    assert r2.status_code == 200 and r2.json()["ok"] is True
+    assert called, "配置命令后应调度重启"
+    assert any(e.get("result") == "manual-restart" for e in updater._load_log())
+    # system-info：手动重启折叠为 restart_count，update_log 只含版本类记录
+    info = client.get("/api/system-info", headers=_auth(token)).json()
+    assert info["restart_count"] == 1
+    assert not any(str(e.get("result", "")).startswith("manual-restart")
+                   for e in info["update_log"]), "manual-restart 不应混入 update_log"
+    assert info["restart_last"] > 0
+    # 恢复默认
+    cfg["restart_command"] = ""
+    storage.save_json(storage.SETTING_CONF, cfg)
+
+
+def test_restart_service_admin_only(app_server):
+    """/api/restart-service：无 token → 401；普通用户（无 user_manage）→ 403。"""
+    client, _ = app_server
+    admin_token = _login(client)
+    # 无 token 直接访问受保护端点
+    r = client.post("/api/restart-service")
+    assert r.status_code == 401, "无 token 应 401"
+    # 造一个只有 upload 权限的普通用户
+    client.post("/api/add-user", data={
+        "username": "u_plain", "password": "pw123",
+        "permissions": json.dumps(["upload"]),
+    }, headers=_auth(admin_token))
+    plain_token = client.post("/api/login", data={
+        "username": "u_plain", "password": "pw123"}).json()["token"]
+    r2 = client.post("/api/restart-service", headers=_auth(plain_token))
+    assert r2.status_code == 403, "无 user_manage 权限应 403"
+    # 管理员带有效 token 应通过（200；restart_command 未配置时返回 need_cmd 而非 403）
+    r3 = client.post("/api/restart-service", headers=_auth(admin_token))
+    assert r3.status_code == 200, "管理员应通过鉴权闸门"

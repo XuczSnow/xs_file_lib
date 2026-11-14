@@ -36,6 +36,8 @@ def app_server():
     storage.SETTING_CONF = os.path.join(tmp, "config", "config.json")
     storage.LINK_CONF = os.path.join(tmp, "data", "links.json")
     storage.SECRET_CONF = os.path.join(tmp, "data", "secret.key")
+    # 在线更新日志重定向（updater._log_path 动态读该属性，不重定向会写进真实 data/update_log.json）
+    storage.UPDATER_LOG_CONF = os.path.join(tmp, "data", "update_log.json")
     # 旧版迁移文件指到临时目录（避免误读真实旧数据）
     storage.LEGACY_SHARE_CONF = os.path.join(tmp, "config", "shares.json")
     storage.LEGACY_UPLOAD_LINK_CONF = os.path.join(tmp, "config", "upload_links.json")

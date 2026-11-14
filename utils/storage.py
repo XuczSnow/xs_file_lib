@@ -379,6 +379,14 @@ def _default_settings() -> dict:
         # 共享密码访问令牌有效期（小时）：/api/share-check 校验密码后签发，
         # 内容/下载/播放请求携带。签发时动态读取（保存设置即热生效，无需重启）
         "share_access_ttl_hours": 1,
+        # 在线更新（设置页"系统更新"卡片）：
+        #   update_enabled    总开关，关闭后管理端检查/更新/回滚端点均 403（默认开）
+        #   update_branch     git 拉取分支（固定远程 origin，public 仓库匿名 fetch，默认 main）
+        #   restart_command   更新/回滚完成后的重启命令（原样交给 shell 执行，sleep 2 后 detached 运行）。
+        #                     留空 = 不自动重启，页面提示"请手动重启服务"（安全降级，不会把服务搞挂）
+        "update_enabled": True,
+        "update_branch": "main",
+        "restart_command": "",
         # 二维码样式
         "qr_style": {
             "fg_color": "000000",

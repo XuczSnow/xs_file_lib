@@ -66,7 +66,63 @@ xs_file_lib/
 
 ## 安装与启动
 
-**环境要求**
+### 环境准备（一键安装前）
+
+`install.py` 对以下依赖**只检测、不自动安装**（缺失时打印各平台安装命令后继续）。请按下表准备：
+
+| 依赖 | 等级 | Windows | Linux | macOS | 验证 |
+|------|------|---------|-------|-------|------|
+| **Python ≥ 3.10**（3.14 已验证） | **必需** | [python.org](https://www.python.org/downloads/) 安装包（勾选 "Add Python to PATH"） | `sudo apt install python3` / `sudo dnf install python3` | `brew install python` | `python --version` |
+| **ffmpeg**（视频缩略图 / DASH 分片） | 建议 | `winget install Gyan.FFmpeg`（装完重开终端使其进 PATH） | `sudo apt install ffmpeg`（或 `sudo dnf install ffmpeg`） | `brew install ffmpeg` | `ffmpeg -version` |
+| **git**（设置页"系统更新"在线自更新） | 建议 | `winget install Git.Git`（或 git-scm.com） | `sudo apt install git` | `brew install git` | `git --version` |
+| **uv**（可选，venv/装依赖显著提速） | 可选 | `winget install astral-sh.uv` | `curl -LsSf https://astral.sh/uv/install.sh \| sh` | `brew install uv` | `uv --version` |
+| **NSSM**（Windows 服务守护，可选） | 可选 | 下载 [nssm.cc](https://nssm.cc/) 的 `nssm.exe`，放进 **用户 PATH** 或 **项目根目录** 任一即可 | — | — | `nssm version` |
+
+> 缺 ffmpeg：除视频首帧缩略图与 DASH 分片外功能全部正常；缺 git：仅"系统更新"卡片不可用；
+> 缺 uv：自动退回标准库 `venv + pip`，不影响安装结果（只是慢）。
+> 缺 NSSM：Windows `--service` 回落用计划任务（不守护崩溃）；放了 NSSM 则优先走真服务 + 崩溃守护。
+> `--service` 装系统服务需要**管理员（Windows）/ sudo（Linux）**权限，普通用户时脚本会降级或给手动命令。
+
+### 一键安装（推荐）
+
+前置已就绪（见上方"环境准备"）时，直接：
+
+```bash
+python install.py                # 检测依赖 → .venv（已有复用，没有则 uv 创建，无 uv 退回标准库 venv）
+                                 #   → pip install -r requirements.txt → 建运行时目录 → 生成 run.bat / run.sh
+python install.py --ipv6         # 额外：监听 IPv4+IPv6 双栈（同端口，走 serve.py；
+                                 #  Windows 上自动设 IPV6_V6ONLY=0，否则 :: 不收 IPv4）
+python install.py --service      # 额外：安装系统服务（开机自启）
+python install.py --service --ipv6 -p 9000   # 组合：9000 端口双栈 + 服务
+```
+
+> **⚠️ Windows：`--service` 需要管理员权限。** 装系统服务（NSSM / 计划任务开机自启 SYSTEM）必须**以管理员身份**运行——右键 PowerShell / CMD "以管理员身份运行"，或在已提权的终端里执行 `python install.py --service`。普通用户运行时脚本会自动降级为"登录时触发的普通任务"（不守护崩溃），并提示改用管理员或 NSSM。
+> 不带 `--service` 的普通安装（`python install.py` / `--ipv6`）**不需要**管理员权限。
+
+安装时会自动把**项目根目录**加入 `git config --global safe.directory`（幂等：已含则跳过，路径动态取本目录不硬编码）——防止仓库属主与当前用户不一致（跨账号克隆 / 网络目录 / zip 解压部署）时 git 报 `dubious ownership` 拒绝在线更新的 `git fetch`。
+
+`--service` 行为（使能即装，失败再提示）：
+- **Linux**：生成 `xs-file-lib.service`（systemd）；有 sudo 装系统服务并 `enable --now`，无 sudo 降级 user unit（附 `loginctl enable-linger` 提示）；再失败打印手动三步
+- **Windows**：**NSSM 优先**（PATH / 项目根目录检测到 `nssm.exe` 即走真服务 `XsFileLib`，开机自启 + 崩溃守护，日志重定向 `logs/`）；未装 NSSM 或安装失败回落 `service_run.bat` + 计划任务 `XsFileLibService`（管理员 → 开机自启 SYSTEM，普通用户 → 登录自启）
+
+**restart_command 自动预填**：服务装成后，`install.py` 按实际安装类型把对应重启命令写进 `config/config.json` 的 `restart_command`（设置页"系统更新"卡片自动回显，无需手填）：
+- Linux 系统服务 → `systemctl restart xs-file-lib`；user 服务 → `systemctl --user restart xs-file-lib`
+- Windows NSSM → `nssm restart XsFileLib`；计划任务 → `schtasks /End /TN "XsFileLibService" && schtasks /Run /TN "XsFileLibService"`
+- 覆盖策略：config 里**空或安装生成的已知默认值 → 预填/覆盖**；**用户自定义值一律保留**；`--uninstall` 移除服务后自动清空已知默认值（自定义值仍保留）
+
+**卸载**（只移除服务，不删业务数据）：
+
+```bash
+python install.py --uninstall   # 删计划任务/系统任务 + systemd unit + 生成的 .bat/.service 文件
+```
+
+完成后脚本会列出剩余文件（`.venv/`、`run.bat`/`run.sh`），如需彻底清理自行删除整个目录；`uploads/ data/ config/ cache/`（账号、共享链接、HMAC 密钥、缓存）一律不碰。
+
+> `--ipv6` 改的是**服务监听地址**（能不能被 IPv6 连上）；设置页的"资源访问地址"（`ipv6_base_url`）是**共享页媒体改道基址**——两者独立，互不替代。
+
+**手动安装（备选）**
+
+环境要求：
 - Python ≥ 3.10（本项目在 3.14 验证通过）
 - 系统已安装 **ffmpeg**（视频首帧缩略图由 PyAV 调用，纯 `pip install` 后若 `import av` 报 `libav*` 缺失，需先装 ffmpeg 全功能包并加入 PATH；Windows 可直接用 `winget install Gyan.FFmpeg`）
 

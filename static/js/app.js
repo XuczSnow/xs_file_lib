@@ -842,6 +842,11 @@
         document.getElementById("dashAutoSlice").checked =
             !!settings.dash_auto_slice;
 
+        // 系统更新（在线更新总开关 / 重启命令 / 拉取分支）
+        document.getElementById("sysUpdateEnabled").checked = settings.update_enabled !== false;
+        document.getElementById("sysRestartCmd").value = settings.restart_command || "";
+        _sysUpdateBranch = settings.update_branch || "main";
+
         // 二维码样式
         const qs = settings.qr_style || {};
         buildQrColorOptions(matchQrPreset(qs.fg_color || "000000", qs.bg_color || "FFFFFF") ||
@@ -884,6 +889,10 @@
             ipv6_timeout_ms: parseInt(document.getElementById("ipv6TimeoutMs").value, 10) || 1500,
             // 相册设置（DASH 自动切片开关，默认关闭）
             dash_auto_slice: document.getElementById("dashAutoSlice").checked,
+            // 系统更新（全量保存必须回传，否则新键会被 config 覆盖洗掉）
+            update_enabled: document.getElementById("sysUpdateEnabled").checked,
+            update_branch: _sysUpdateBranch,
+            restart_command: document.getElementById("sysRestartCmd").value.trim(),
             // 二维码样式
             qr_style: {
                 fg_color: preset.fg,
@@ -1000,4 +1009,196 @@
 
         card.innerHTML = '<div class="task-title">❌ 打包失败</div>';
     }
+
+    // ---------- 系统更新（在线检查 / 拉取远程 / 回滚，仅管理员） ----------
+    // 卡片显隐随 user_manage 权限；检查/更新走 /api/check-update、/api/apply-update，
+    // 成功后若配置了重启命令则服务自动重启（本页轮询 /api/settings 复活后刷新）。
+
+    function sysEl(id) { return document.getElementById(id); }
+
+    /** 卡片 + 按钮显隐（非管理员整卡隐藏；后端再验 user_manage 双保险）。 */
+    function initSystemUpdateCard() {
+        const card = sysEl("systemUpdateCard");
+        if (!card) return;
+        if (!hasPermission("user_manage")) { card.style.display = "none"; return; }
+        bindSystemUpdateEvents();
+        loadSystemUpdate();
+    }
+
+    let _sysApplyCooldown = 0;   // 更新按钮冷却（10s 防连点）
+    let _sysUpdateBranch = "main"; // 拉取分支（loadSettings 载入原值，saveSettings 原样回写防被全量保存洗掉）
+
+    function bindSystemUpdateEvents() {
+        const check = sysEl("sysCheckBtn"), apply = sysEl("sysApplyBtn"),
+              rollback = sysEl("sysRollbackBtn"), restart = sysEl("sysRestartBtn");
+        if (check) check.onclick = () => runSystemCheck();
+        if (apply) apply.onclick = () => runSystemApply();
+        if (rollback) rollback.onclick = () => runSystemRollback();
+        if (restart) restart.onclick = () => runSystemRestart();
+    }
+
+    /** 以 JSON 形式 POST（自动附带管理 API 鉴权头），返回解析后的 JSON。
+     *  用于 POST-only 端点（apply-update / rollback-update / restart-service）——
+     *  误用 X.getJSON（GET）会被 FastAPI 以 405 Method Not Allowed 拒绝。 */
+    async function postJSON(url) {
+        const res = await fetch(url, { method: "POST", headers: X.authHeaders() });
+        return res.json();
+    }
+
+    /** 拉 /api/system-info：当前版本 / commit / 最近 3 条更新记录。 */
+    async function loadSystemUpdate() {
+        const info = await X.getJSON("/api/system-info");
+        if (info && info.success !== false) {
+            const v = sysEl("sysVersion"); if (v) v.textContent = info.version || "-";
+            const c = sysEl("sysCommit"); if (c) c.textContent = info.commit || "-";
+            const last = sysEl("sysLastUpdate");
+            if (last) {
+                // 版本更新（最多 3 条）与手动重启（折叠计数）分行显示，
+                // 避免几次手动重启把"最近更新"挤没
+                const lines = [];
+                const log = info.update_log || [];
+                lines.push("版本更新：" + (log.length
+                    ? log.map((e) =>
+                        new Date(e.at * 1000).toLocaleString() + " " +
+                        (e.from || "?") + "→" + (e.to || "?") + " " +
+                        (e.result === "ok" ? "✓" : (e.result === "rollback" ? "↩" : "⚠" + e.result))
+                      ).join("；")
+                    : "尚未更新"));
+                if (info.restart_count > 0) {
+                    lines.push("手动重启：" + info.restart_count + " 次" +
+                        (info.restart_last ? "（最近 " + new Date(info.restart_last * 1000).toLocaleString() + "）" : ""));
+                }
+                last.textContent = lines.join("\n");
+                last.style.whiteSpace = "pre-line";
+            }
+        }
+    }
+
+    /** 检查更新：/api/check-update → 显示落后 commit 列表 / 脏工作区告警。 */
+    async function runSystemCheck() {
+        const btn = sysEl("sysCheckBtn"); if (btn) btn.disabled = true;
+        const res = await X.getJSON("/api/check-update");
+        if (btn) btn.disabled = false;
+        const result = sysEl("sysCheckResult");
+        if (!res || res.ok === false) {
+            if (result) result.textContent = " " + (res && res.error || "检查失败");
+            return;
+        }
+        const panel = sysEl("sysUpdatePanel");
+        const dirtyWarn = sysEl("sysDirtyWarn");
+        const list = sysEl("sysCommitList");
+        const count = sysEl("sysBehindCount");
+        if (count) count.textContent = res.behind;
+        if (list) {
+            list.innerHTML = (res.commits && res.commits.length)
+                ? res.commits.map((l) => "<li>" + X.escapeHtml(l) + "</li>").join("")
+                : "<li class='text-muted'>（无新提交）</li>";
+        }
+        if (res.behind > 0 && !res.dirty.length) panel.style.display = "";
+        else panel.style.display = res.dirty.length ? "" : "none";
+        if (dirtyWarn) {
+            if (res.dirty.length) { dirtyWarn.style.display = ""; dirtyWarn.textContent =
+                " ⚠ 工作区有 " + res.dirty.length + " 个未提交文件，更新已被禁用（需先提交/清理）"; }
+            else dirtyWarn.style.display = "none";
+        }
+        const applyBtn = sysEl("sysApplyBtn");
+        if (applyBtn) applyBtn.disabled = !(res.behind > 0 && !res.dirty.length);
+        if (result) result.textContent = " " + (res.behind > 0 ? "发现 " + res.behind + " 个更新" : "已是最新");
+    }
+
+    /** 执行更新：确认弹窗 → POST /api/apply-update → 成功则轮询复活（若自动重启）。 */
+    async function runSystemApply() {
+        const now = Date.now();
+        if (now - _sysApplyCooldown < 10000) return;   // 10s 冷却
+        const cmd = (sysEl("sysRestartCmd") ? sysEl("sysRestartCmd").value.trim() : "");
+        const restartNote = cmd ? "完成后将自动重启服务（中断约 5~10 秒）"
+                                 : "完成后需手动重启服务";
+        if (!confirm("将拉取远程 main 分支最新代码并更新本地。" + restartNote + "。确定继续？")) return;
+        _sysApplyCooldown = now;
+        const applyBtn = sysEl("sysApplyBtn"); if (applyBtn) applyBtn.disabled = true;
+        const result = sysEl("sysCheckResult");
+        // 先保存"重启命令 + 启用开关"，让 updater 读到最新值再拉取
+        await saveRestartCommand(cmd, sysEl("sysUpdateEnabled").checked);
+        const res = await postJSON("/api/apply-update").catch(() => null);
+        if (res && res.ok) {
+            if (result) result.textContent = " " + res.message;
+            await loadSystemUpdate();
+            if (res.restarted) {
+                await waitServiceBack(30);
+                alert("服务已重启，请硬刷新浏览器（Ctrl+Shift+R）加载新版静态资源。");
+            }
+        } else {
+            if (result) result.textContent = " " + (res && (res.error || res.message) || "更新失败");
+            if (applyBtn) applyBtn.disabled = false;
+        }
+    }
+
+    /** 回滚：确认 → POST /api/rollback-update → 刷新。 */
+    async function runSystemRollback() {
+        if (!confirm("回滚到最近一次成功更新的旧版本？")) return;
+        const res = await postJSON("/api/rollback-update").catch(() => null);
+        if (res && res.ok) { alert(res.message || "已回滚"); await loadSystemUpdate(); }
+        else alert((res && (res.error || res.message)) || "回滚失败");
+    }
+
+    /** 立即重启：先保存当前输入框的重启命令（后端读最新值），确认 → POST /api/restart-service。
+     *  成功则服务 sleep 2s 后 detached 重启，本页轮询 /api/settings 等复活后提示硬刷新。 */
+    async function runSystemRestart() {
+        const cmd = (sysEl("sysRestartCmd") ? sysEl("sysRestartCmd").value.trim() : "");
+        const btn = sysEl("sysRestartBtn");
+        if (!cmd) {
+            alert("请先填写重启命令（如 systemctl restart xs-file-lib），再点立即重启。");
+            sysEl("sysRestartCmd") && sysEl("sysRestartCmd").focus();
+            return;
+        }
+        if (!confirm("将立即用命令「" + cmd + "」重启服务（约 2~10 秒中断）。确定？")) return;
+        if (btn) btn.disabled = true;
+        // 保存输入框命令（后端 restart_now 读 config 的最新值）
+        await saveRestartCommand(cmd, sysEl("sysUpdateEnabled") ? sysEl("sysUpdateEnabled").checked : true);
+        const res = await postJSON("/api/restart-service").catch(() => null);
+        if (res && res.ok) {
+            await waitServiceBack(30);
+            alert("服务已重启，请硬刷新浏览器（Ctrl+Shift+R）。");
+        } else if (res && res.need_cmd) {
+            alert(res.error || "未配置重启命令");
+        } else {
+            alert((res && (res.error || res.message)) || "重启失败");
+        }
+        if (btn) btn.disabled = false;
+    }
+
+    /** 更新/回滚后服务重启的等待轮询：每 1s 探 /api/settings，复活 resolve。 */
+    function waitServiceBack(maxTries) {
+        return new Promise((resolve) => {
+            let tries = 0;
+            const timer = setInterval(async () => {
+                tries++;
+                try {
+                    const r = await fetch("/api/settings", { cache: "no-store" });
+                    if (r.ok) { clearInterval(timer); resolve(true); }
+                } catch (e) { /* 服务未复活，继续轮询 */ }
+                if (tries >= maxTries) { clearInterval(timer); resolve(false); }
+            }, 1000);
+        });
+    }
+
+    /** 只把"重启命令 + 启用开关"两个系统更新键写回（避免与完整 saveSettings 全量覆盖冲突）。 */
+    async function saveRestartCommand(cmd, enabled) {
+        const settings = await X.getJSON("/api/settings");
+        settings.restart_command = cmd || "";
+        settings.update_enabled = !!enabled;
+        const res = await fetch("/api/settings", {
+            method: "POST",
+            headers: Object.assign({ "Content-Type": "application/json" }, X.authHeaders()),
+            body: JSON.stringify(settings),
+        });
+        return res.json();
+    }
+
+    // 进入主界面后初始化系统更新卡片（权限 + 数据 + 事件）
+    const _origEnterMain = enterMainPage;
+    enterMainPage = async function (username) {
+        await _origEnterMain(username);
+        initSystemUpdateCard();
+    };
 })();
