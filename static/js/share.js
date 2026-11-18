@@ -58,9 +58,17 @@
         document.getElementById("shareFileName").innerText = result.name;
         document.getElementById("shareExpire").innerText = "⏰ 有效期至：" + result.expire;
 
+        // 首屏按共享模式区分入口（相册 / 普通文件夹 / 普通文件），图标、标题、按钮文案一致，
+        // 避免相册模式复用普通"文件预览"卡片观感
+        const shareMode = result.share_mode || "normal";
+        const isAlbum = shareMode === "album";
         const isFolder = result.type === "folder";
-        document.querySelector(".file-icon").innerText = isFolder ? "📁" : "📄";
-        document.querySelector(".text-center").innerText = isFolder ? "文件夹共享" : "文件共享";
+        document.querySelector(".file-icon").innerText =
+            isAlbum ? "🖼️" : (isFolder ? "📁" : "📄");
+        document.querySelector(".text-center").innerText =
+            isAlbum ? "相册共享" : (isFolder ? "文件夹共享" : "文件共享");
+        const verifyBtn = document.getElementById("verifyBtn");
+        if (verifyBtn) verifyBtn.innerText = isAlbum ? "进入相册" : "预览文件";
         document.getElementById("sharePasswordStatus").innerText =
             result.has_password ? "🔒 已启用提取码" : "🔓 无需密码";
 

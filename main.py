@@ -68,6 +68,7 @@ for router in (
     upload_links.router,
     zip_tasks.router,
     system.router,        # 在线更新（system-info/check-update/apply-update/rollback-update）
+    # 注：system.router 还含公开的 /api/health（探活，U3），刻意不进 _PROTECTED_EXACT
 ):
     app.include_router(router)
 

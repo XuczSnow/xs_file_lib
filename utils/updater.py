@@ -118,9 +118,21 @@ def check_update() -> dict:
     rc, out, _ = _run_git(["log", "--oneline", "HEAD..origin/" + branch], cwd)
     commits = [l for l in out.splitlines() if l.strip()]
     rc, out, _ = _run_git(["status", "--porcelain", "--untracked-files=normal"], cwd)
-    dirty = [l[3:] for l in out.splitlines() if l.strip()]
+    dirty = [_porcelain_path(l) for l in out.splitlines() if l.strip()]
     return {"ok": True, "behind": len(commits), "current": current[:8],
             "latest": latest[:8], "commits": commits[:20], "dirty": dirty}
+
+
+def _porcelain_path(line: str) -> str:
+    """git status --porcelain 一行 → 归一化路径。
+
+    普通行是 `XY PATH`（XY 含 2 空格）取 l[3:]；rename/copy 行是
+    `XY old -> new`（XY='R '/'C '），取"目标"（new）避免把 `old -> new` 整串
+    当文件名显示（L3）；带引号路径（git 对特殊字符会引号包裹）原样保留。"""
+    body = line[3:]
+    if " -> " in body:
+        body = body.split(" -> ", 1)[1]
+    return body
 
 
 def _dirty_files() -> list:
@@ -128,7 +140,7 @@ def _dirty_files() -> list:
     rc, out, _ = _run_git(["status", "--porcelain"], cwd)
     if rc != 0:
         return ["<git status 失败>"]
-    return [l[3:] for l in out.splitlines() if l.strip()]
+    return [_porcelain_path(l) for l in out.splitlines() if l.strip()]
 
 
 def apply_update(actor: str = "?") -> dict:
@@ -224,6 +236,10 @@ def _smoke_check(cwd: str) -> str:
     if bad:
         return "；".join(bad[:3])
     try:
+        # 把 cwd 加入 sys.path：真实 uvicorn 进程已导入 main（命中 sys.modules）；
+        # 若将来在独立子进程里跑本自检且 cwd 不在 sys.path，仍能保证 import 到。
+        if cwd not in sys.path:
+            sys.path.insert(0, cwd)
         import main  # noqa: F401  触发路由/中间件导入链（幂等初始化）
     except Exception as e:
         return "import main 失败：" + str(e)[:160]
@@ -240,10 +256,11 @@ def _schedule_restart() -> bool:
         return False
     try:
         if os.name == "nt":
-            # Windows：启动独立 cmd，2s 后执行；DETACHED_PROCESS 脱离本进程
-            flags = 0x00000008
-            subprocess.Popen(cmd, shell=True, creationflags=flags,
-                             start_new_session=True,
+            # Windows：独立 cmd 延迟 2s 再执行（等 HTTP 响应发完，避免服务被即时重启
+            # 掐断请求）；DETACHED_PROCESS | CREATE_NO_WINDOW 脱离本进程且不闪控制台窗。
+            flags = 0x00000008 | 0x08000000   # DETACHED_PROCESS | CREATE_NO_WINDOW
+            subprocess.Popen('timeout /t 2 /nobreak >nul & %s' % cmd, shell=True,
+                             creationflags=flags, start_new_session=True,
                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                              stderr=subprocess.DEVNULL)
         else:

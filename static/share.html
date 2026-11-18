@@ -45,7 +45,8 @@
         <!-- 有提取码时显示；无则 share.js 隐藏。errorText 用于校验失败/过期提示 -->
         <input type="password" id="sharePassword" class="form-control" placeholder="请输入提取密码">
         <div id="errorText"></div>
-        <button class="btn btn-primary mt-3 download-btn" onclick="verifyShare()">
+        <!-- 按钮文案按共享模式区分（普通"预览文件" / 相册"进入相册"），由 share.js 首屏填充 -->
+        <button id="verifyBtn" class="btn btn-primary mt-3 download-btn" onclick="verifyShare()">
             预览文件
         </button>
     </div>

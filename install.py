@@ -4,7 +4,8 @@
 用法：
     python install.py                      # 检测依赖 + 建 venv + 装依赖 + 生成启动器
     python install.py --ipv6               # 监听 IPv4+IPv6 双栈（serve.py）
-    python install.py --service            # 额外安装系统服务（开机自启）
+    python install.py --service            # 额外安装系统服务（Windows 需管理员 + NSSM；
+                                            #    无 nssm 时提示自行处理，不用计划任务）
     python install.py -p 9000              # 指定端口（默认 8000）
 
 前置依赖（只检测 + 提示，不自动安装）：
@@ -20,9 +21,10 @@
 --service（使能即装，失败再提示）：
     Linux   : 生成 xs-file-lib.service（systemd）；有 sudo → 装系统服务，
               无 sudo → 降级 user unit；再失败 → 打印手动三步
-    Windows : 生成 service_run.bat + 计划任务 XsFileLibService；
-              管理员 → ONSTART/SYSTEM 开机自启，普通用户 → ONLOGON 登录自启
-              安装失败 → 打印 NSSM 备选
+    Windows : 需管理员权限（否则直接退出并提示提权后重跑）。
+              仅用 NSSM（PATH/项目根 nssm.exe → 真服务 XsFileLib：开机自启 + 崩溃守护，
+              AppDirectory/日志重定向 logs/）；不再使用计划任务（避免交互弹窗）。
+              未检测到 nssm.exe 时不安装、提示用户自行下载放置后重跑
 """
 import argparse
 import os
@@ -221,18 +223,6 @@ def write_runners(port, ipv6):
         ok("已生成 run.sh")
 
 
-def write_service_runner(port, ipv6):
-    """service_run.bat：Windows 计划任务 / NSSM 的服务动作体（Linux 用 venv 直接跑）。"""
-    if IS_WIN:
-        bat = "@echo off\r\ncd /d \"%s\"\r\n%s\r\n" % (ROOT, launch_cmd_shell(port, ipv6))
-        p = os.path.join(ROOT, "service_run.bat")
-        with open(p, "w", encoding="ascii", errors="replace") as f:
-            f.write(bat)
-        return p
-    # POSIX：服务动作 = venv python 直接跑（systemd 生成 service 文件，无需额外 runner）
-    return None
-
-
 # ---------------------------------------------------------------- restart_command 联动
 # install 按实际装出的服务类型，把对应重启命令预填进 config/config.json 的
 # restart_command（设置页"系统更新"卡片 loadSettings 自动回显，前端零改动）。
@@ -389,8 +379,9 @@ def _install_nssm(nssm, port, ipv6):
     已建成仍算成功，可手动重试）。"""
     svc = "XsFileLib"
     os.makedirs(os.path.join(ROOT, "logs"), exist_ok=True)
+    # L2: `::` 显式加引号，防 NSSM→CreateProcess 的 argv 解析歧义（python 收值仍为 ::）
     if ipv6:
-        app_args = "serve.py --host :: --port %d" % port
+        app_args = 'serve.py --host "::" --port %d' % port
     else:
         app_args = "-m uvicorn main:app --host 0.0.0.0 --port %d" % port
     if subprocess.run(["sc", "query", svc], capture_output=True).returncode == 0:
@@ -402,9 +393,10 @@ def _install_nssm(nssm, port, ipv6):
              % (r.stderr or r.stdout).strip()[:150])
         return False
     subprocess.run([nssm, "set", svc, "AppDirectory", ROOT], capture_output=True)
+    # L1: stdout / stderr 各写独立文件，避免交错混写
     subprocess.run([nssm, "set", svc, "AppStdout", os.path.join(ROOT, "logs", "service.log")],
                    capture_output=True)
-    subprocess.run([nssm, "set", svc, "AppStderr", os.path.join(ROOT, "logs", "service.log")],
+    subprocess.run([nssm, "set", svc, "AppStderr", os.path.join(ROOT, "logs", "service.err.log")],
                    capture_output=True)
     st = subprocess.run([nssm, "start", svc], capture_output=True, text=True)
     if st.returncode != 0:
@@ -412,58 +404,40 @@ def _install_nssm(nssm, port, ipv6):
              % (svc, (st.stderr or st.stdout).strip()[:150]))
     ok("NSSM 服务 %s 已创建（开机自启 + 崩溃守护）" % svc)
     print("          管理: nssm status/restart/stop %s" % svc)
-    print("          日志: %s\\logs\\service.log" % ROOT.replace("/", "\\"))
+    print("          日志: %s\\logs\\service.log（stderr → service.err.log）"
+          % ROOT.replace("/", "\\"))
     sync_restart_command("nssm restart XsFileLib")
     return True
 
 
 def windows_service(port, ipv6):
-    """返回 (成功?, 类型描述)。NSSM 优先，失败回落计划任务。"""
-    # NSSM 优先（PATH 或项目根目录检测到即走真服务 + 崩溃守护；失败回落计划任务）
-    nssm = find_nssm()
-    if nssm:
-        print("          检测到 NSSM: %s" % nssm)
-        if _install_nssm(nssm, port, ipv6):
-            return True, "NSSM 服务 XsFileLib（开机自启 + 崩溃守护）"
-        warn("NSSM 路径失败，回落计划任务（schtasks）")
-    task = "XsFileLibService"
-    runner = write_service_runner(port, ipv6)   # 生成 service_run.bat
-    if not runner:
-        fail("未生成服务动作脚本")
+    """返回 (成功?, 类型描述)。Windows 服务安装**仅用 NSSM**（真服务：开机自启 +
+    崩溃守护）；未检测到 nssm 时不建计划任务，提示用户自行处理后重跑。"""
+    # NSSM 安装服务需 SeServiceManagerPrivilege → 要求管理员。
+    if subprocess.run(["net", "session"], capture_output=True).returncode != 0:
+        fail("Windows --service 需要管理员权限（NSSM 安装服务需 SeServiceManagerPrivilege），"
+             "当前终端未提权。")
+        print("          解决：右键 PowerShell / 命令提示符 \"以管理员身份运行\"，"
+              "再执行  python install.py --service")
         return False, ""
-    runner_arg = '"%s"' % runner      # bat 路径加引号（防含空格目录），原生反斜杠
-    # 幂等：已存在先删（不存在则忽略）
-    subprocess.run(["schtasks", "/Delete", "/TN", task, "/F"],
-                   capture_output=True)
-    # 管理员判断：net session 成功 = 有权限
-    is_admin = subprocess.run(["net", "session"], capture_output=True).returncode == 0
-    if is_admin:
-        args = ["schtasks", "/Create", "/TN", task, "/SC", "ONSTART",
-                "/RU", "SYSTEM", "/RL", "HIGHEST", "/F", "/TR", runner_arg]
-    else:
-        warn("非管理员权限：尝试创建\"登录时触发\"任务（当前用户，不守护崩溃）")
-        args = ["schtasks", "/Create", "/TN", task, "/SC", "ONLOGON",
-                "/F", "/TR", runner_arg]
-    print("          执行: %s" % " ".join(args))
-    r = subprocess.run(args, capture_output=True, text=True)
-    if r.returncode == 0:
-        trigger = "开机自启（SYSTEM）" if is_admin else "登录自启（当前用户）"
-        ok("计划任务 %s 已创建（%s）" % (task, trigger))
-        print("          手动触发: schtasks /Run /TN \"%s\"" % task)
-        print("          停止:     schtasks /End /TN \"%s\"" % task)
-        sync_restart_command('schtasks /End /TN "XsFileLibService" && schtasks /Run /TN "XsFileLibService"')
-        if not is_admin:
-            print("          提示: 如需开机自启 + 崩溃守护，请以管理员运行本脚本，"
-                  "或在 PATH/项目根放 nssm.exe（https://nssm.cc/）后重跑")
-        return True, "计划任务 XsFileLibService（%s）" % trigger
-    fail("计划任务创建失败：%s" % (r.stderr or r.stdout).strip()[:200])
-    print("          备选 1：以管理员身份重新运行  python install.py --service")
-    print("          备选 2（NSSM，https://nssm.cc/，放项目根或 PATH 后重跑即自动使用）：")
-    print(textwrap.indent("nssm install XsFileLib \"%s\" \"%s\""
-                          % (VENV_PY, "serve.py --host :: --port %d" % port if ipv6
-                             else "-m uvicorn main:app --host 0.0.0.0 --port %d" % port),
-                          "          "))
-    print("          当前可先用 run.bat 手动启动，不影响基础功能")
+    nssm = find_nssm()
+    if not nssm:
+        fail("未检测到 NSSM（PATH 与项目根目录均无 nssm.exe），无法安装 Windows 服务。")
+        print("          Windows 服务安装仅依赖 NSSM（真服务：开机自启 + 崩溃守护；"
+              "本脚本不再使用计划任务，避免交互弹窗）。")
+        print("          请自行处理后重跑：")
+        print("          1) 下载 NSSM（https://nssm.cc/），将 nssm.exe 放入项目根目录或加入 PATH")
+        print("          2) 以管理员身份重跑  python install.py --service")
+        print("          或手动安装 NSSM 服务：")
+        print(textwrap.indent("nssm install XsFileLib \"%s\" \"%s\""
+                              % (VENV_PY, "serve.py --host :: --port %d" % port if ipv6
+                                 else "-m uvicorn main:app --host 0.0.0.0 --port %d" % port),
+                              "             "))
+        print("          当前可先用 run.bat 手动启动，不影响基础功能")
+        return False, ""
+    print("          检测到 NSSM: %s" % nssm)
+    if _install_nssm(nssm, port, ipv6):
+        return True, "NSSM 服务 XsFileLib（开机自启 + 崩溃守护）"
     return False, ""
 
 
@@ -495,8 +469,7 @@ def print_next_steps(port, ipv6, with_service, service_ok=True, service_kind="")
     if not (with_service and service_ok):
         print("  在线更新: 设置页\"系统更新\"卡片 restart_command 可填")
         if platform.system() == "Windows":
-            print('    计划任务: schtasks /End /TN "XsFileLibService" && schtasks /Run /TN "XsFileLibService"')
-            print("    NSSM:     nssm restart XsFileLib")
+            print("    NSSM:  nssm restart XsFileLib（需先在 PATH/项目根放置 nssm.exe）")
         else:
             print("    systemctl restart xs-file-lib（或 --user 版）")
     print("  可选环境变量（不设用默认）: XS_TOKEN_SECRET / XS_TOKEN_TTL /")
@@ -607,7 +580,8 @@ def print_leftover_files():
 
 def main():
     ap = argparse.ArgumentParser(description="XS File Library 一键安装/卸载")
-    ap.add_argument("--service", action="store_true", help="安装系统服务（开机自启）")
+    ap.add_argument("--service", action="store_true",
+                    help="安装系统服务（Windows 需管理员 + NSSM；无 nssm.exe 时提示自行放置，不用计划任务）")
     ap.add_argument("--ipv6", action="store_true",
                     help="同时监听 IPv4+IPv6（双栈，走 serve.py）")
     ap.add_argument("-p", "--port", type=int, default=8000, help="监听端口（默认 8000）")

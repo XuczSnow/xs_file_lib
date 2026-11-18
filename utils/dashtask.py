@@ -36,9 +36,10 @@ def _dash_root() -> str:
 def _auto_slice_enabled() -> bool:
     """设置项 dash_auto_slice（默认 False = 不自动分片）。
 
-    关闭时 ensure_dash 直接返回 ''，manifest 端点 404 → 播放页走渐进式；
-    已用 tools/make_dash.py 离线预切的产物在本开关关闭时也不会被服务端使用
-    （需到设置页开启后才会命中复用）。"""
+    关闭时仅阻止"未命中 → 自动重切"：ensure_dash 命中已有缓存（含离线
+    make_dash.py 产物）仍直接复用，开关关闭时**不会**把合法缓存一刀切掉
+    （否则离线预切的服务端会始终 manifest 404，播放页恒回退渐进式）。
+    即：开关只控制"要不要现在自动切"，不影响"复用已切好的"。"""
     try:
         return bool((storage.load_config() or {}).get("dash_auto_slice", False))
     except Exception:

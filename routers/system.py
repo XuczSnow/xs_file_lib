@@ -100,3 +100,27 @@ def restart_service(request: Request):
         code = 401 if "未授权" in username else 403
         return JSONResponse({"success": False, "message": username}, status_code=code)
     return updater.restart_now(actor=username)
+
+
+# ---- 健康检查（公开，供 NSSM 守护 / 外部 uptime 监控 / 探活）----
+# U3 A 基础版：只证明"服务进程活着且能响应"，返回版本号 + 时间戳。
+# 刻意公开（不进 main.py 的 require_token 保护列表）——探活就是匿名调的，
+# 同媒体缩略图 /api/share-info 的公开口径；不吐 config / 路径等敏感信息。
+
+import time
+
+
+@router.get("/api/health")
+def health():
+    """服务探活（公开，无需 token）。
+
+    返回 {ok: true, version, ts}：
+      - ok 恒为 true（端点可达即 true，探活只回答"活没活"）；
+      - version = 当前 release_note 最新版本号（updater.latest_version，读目录毫秒级）；
+      - ts = 服务端 Unix 时间戳（供调用方判断时钟/新鲜度）。
+    不缓存（无 Cache-Control），每次实探。"""
+    return {
+        "ok": True,
+        "version": updater.latest_version(),
+        "ts": int(time.time()),
+    }

@@ -702,3 +702,29 @@ def test_restart_service_admin_only(app_server):
     # 管理员带有效 token 应通过（200；restart_command 未配置时返回 need_cmd 而非 403）
     r3 = client.post("/api/restart-service", headers=_auth(admin_token))
     assert r3.status_code == 200, "管理员应通过鉴权闸门"
+
+
+# ---------- 健康检查（U3 A）：公开探活端点 ----------
+
+def test_health_endpoint_public(app_server):
+    """/api/health：公开端点（无需 token），返回 ok + version + ts。
+
+    固定三件事：
+    - 匿名访问 200（不进 require_token 保护列表）；
+    - 字段齐全（ok=True / version 非空 / ts 为 int）；
+    - 不误入保护列表（带不带 token 行为一致）。"""
+    client, _ = app_server
+    # 匿名（不带任何 token）即可访问
+    r = client.get("/api/health")
+    assert r.status_code == 200, "健康检查应公开可达"
+    body = r.json()
+    assert body["ok"] is True
+    assert isinstance(body["ts"], int)
+    # version = release_note/ 下最新号；测试隔离临时目录无 release_note 时为 ""（允许），
+    # 但字段必须存在
+    assert "version" in body
+
+    # 带 token 也 200（行为一致，不因鉴权差异）
+    admin_token = _login(client)
+    r2 = client.get("/api/health", headers=_auth(admin_token))
+    assert r2.status_code == 200
